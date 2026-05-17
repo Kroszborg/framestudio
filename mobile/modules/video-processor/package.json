@@ -1,0 +1,13 @@
+{
+  "name": "expo-video-processor",
+  "version": "1.0.0",
+  "description": "Native video processing using Android MediaMuxer — trim, speed, export",
+  "main": "./index.ts",
+  "expo": {
+    "autolinkingConfig": {
+      "android": {
+        "packageName": "expo.modules.videoprocessor"
+      }
+    }
+  }
+}

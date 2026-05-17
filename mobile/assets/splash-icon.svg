@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1284 2778" width="1284" height="2778">
+  <!-- Full dark background -->
+  <rect width="1284" height="2778" fill="#0A0A0F"/>
+
+  <!-- Subtle grid overlay -->
+  <defs>
+    <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+      <path d="M 60 0 L 0 0 0 60" fill="none" stroke="rgba(255,255,255,0.02)" stroke-width="1"/>
+    </pattern>
+    <radialGradient id="glow" cx="50%" cy="42%" r="45%">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.06)"/>
+      <stop offset="100%" stop-color="transparent"/>
+    </radialGradient>
+  </defs>
+  <rect width="1284" height="2778" fill="url(#grid)"/>
+  <rect width="1284" height="2778" fill="url(#glow)"/>
+
+  <!-- Logo icon centered -->
+  <g transform="translate(392, 980)">
+    <!-- Film frame -->
+    <rect x="0" y="0" width="500" height="500" rx="90" fill="#0A0A0A" stroke="#FFFFFF" stroke-width="20"/>
+    <!-- Sprocket holes top -->
+    <rect x="60" y="40" width="60" height="46" rx="12" fill="white" opacity="0.7"/>
+    <rect x="160" y="40" width="60" height="46" rx="12" fill="white" opacity="0.7"/>
+    <rect x="260" y="40" width="60" height="46" rx="12" fill="white" opacity="0.7"/>
+    <rect x="360" y="40" width="60" height="46" rx="12" fill="white" opacity="0.7"/>
+    <!-- Sprocket holes bottom -->
+    <rect x="60" y="414" width="60" height="46" rx="12" fill="white" opacity="0.7"/>
+    <rect x="160" y="414" width="60" height="46" rx="12" fill="white" opacity="0.7"/>
+    <rect x="260" y="414" width="60" height="46" rx="12" fill="white" opacity="0.7"/>
+    <rect x="360" y="414" width="60" height="46" rx="12" fill="white" opacity="0.7"/>
+    <!-- Screen area -->
+    <rect x="46" y="108" width="408" height="285" rx="24" fill="#1A1A1A"/>
+    <!-- Play button -->
+    <path d="M186 162 L334 250 L186 340 Z" fill="white"/>
+    <!-- Timeline -->
+    <rect x="62" y="362" width="376" height="10" rx="5" fill="white" opacity="0.2"/>
+    <rect x="62" y="362" width="172" height="10" rx="5" fill="white" opacity="0.65"/>
+    <circle cx="234" cy="367" r="14" fill="white"/>
+  </g>
+
+  <!-- App name -->
+  <text
+    x="642" y="1600"
+    text-anchor="middle"
+    font-family="'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
+    font-size="110"
+    font-weight="900"
+    letter-spacing="-4"
+    fill="#F5F5F5"
+  >FrameStudio</text>
+
+  <!-- Tagline -->
+  <text
+    x="642" y="1690"
+    text-anchor="middle"
+    font-family="'SF Pro Text', 'Helvetica Neue', Arial, sans-serif"
+    font-size="40"
+    font-weight="400"
+    fill="#555555"
+    letter-spacing="0"
+  >Professional Video Editor</text>
+</svg>

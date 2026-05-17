@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "icon": "./assets/icon.png",
+    "android": {
+      "package": "com.framestudio_k8m2.runable",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0A0A"
+      },
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "READ_MEDIA_VIDEO",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_AUDIO"
+      ]
+    },
+    "extra": {
+      "apiUrl": "https://l17ajclkqwh4nur3jx8tt-preview-4200.runable.site/"
+    },
+    "ios": {
+      "bundleIdentifier": "com.framestudio_k8m2.runable",
+      "supportsTablet": true
+    },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A0F"
+    },
+    "name": "FrameStudio",
+    "slug": "framestudio",
+    "version": "1.0.0",
+    "scheme": "framestudio",
+    "orientation": "default",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow FrameStudio to save exported videos to your gallery.",
+          "savePhotosPermission": "Allow FrameStudio to save exported videos to your gallery.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow FrameStudio to access your photos and videos for editing."
+        }
+      ],
+      "expo-video",
+      "expo-screen-orientation"
+    ],
+    "description": "FrameStudio — Professional video, photo & audio editor. Multi-track timeline, filters, transitions, Ken Burns, audio mixer and 4K export.",
+    "backgroundColor": "#0A0A0F",
+    "primaryColor": "#FFFFFF"
+  }
+}

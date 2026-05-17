@@ -1,0 +1,15 @@
+{
+  "name": "framestudio",
+  "private": true,
+  "packageManager": "bun@1.2.20",
+  "scripts": {
+    "dev:web": "cd web && npm run dev",
+    "dev:mobile": "cd mobile && npx expo start",
+    "build:web": "cd web && npm run build",
+    "clean:metro": "powershell -Command \"Remove-Item $env:TEMP\\metro-cache,$env:TEMP\\metro-file-map* -Recurse -Force -ErrorAction SilentlyContinue; Write-Host 'Metro cache cleared'\"",
+    "clean:android": "powershell -Command \"Remove-Item mobile\\android\\app\\build,mobile\\android\\build,mobile\\android\\.gradle,mobile\\android\\app\\.cxx -Recurse -Force -ErrorAction SilentlyContinue; Write-Host 'Android build cleaned'\"",
+    "build:release": "npm run clean:metro && cd mobile\\android && gradlew.bat assembleRelease --stacktrace",
+    "build:release:clean": "npm run clean:metro && npm run clean:android && cd mobile\\android && gradlew.bat assembleRelease --stacktrace",
+    "deploy:apk": "copy mobile\\android\\app\\build\\outputs\\apk\\release\\framestudio.apk web\\public\\download\\FrameStudio-v1.0.apk && echo APK deployed to website"
+  }
+}

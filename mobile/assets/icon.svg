@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="200" fill="#0A0A0A"/>
+
+  <!-- Film frame outer stroke -->
+  <rect x="64" y="64" width="896" height="896" rx="160" fill="#0A0A0A" stroke="#FFFFFF" stroke-width="40"/>
+
+  <!-- Sprocket holes - top row -->
+  <rect x="140" y="120" width="100" height="80" rx="20" fill="white" opacity="0.75"/>
+  <rect x="295" y="120" width="100" height="80" rx="20" fill="white" opacity="0.75"/>
+  <rect x="462" y="120" width="100" height="80" rx="20" fill="white" opacity="0.75"/>
+  <rect x="629" y="120" width="100" height="80" rx="20" fill="white" opacity="0.75"/>
+  <rect x="784" y="120" width="100" height="80" rx="20" fill="white" opacity="0.75"/>
+
+  <!-- Sprocket holes - bottom row -->
+  <rect x="140" y="824" width="100" height="80" rx="20" fill="white" opacity="0.75"/>
+  <rect x="295" y="824" width="100" height="80" rx="20" fill="white" opacity="0.75"/>
+  <rect x="462" y="824" width="100" height="80" rx="20" fill="white" opacity="0.75"/>
+  <rect x="629" y="824" width="100" height="80" rx="20" fill="white" opacity="0.75"/>
+  <rect x="784" y="824" width="100" height="80" rx="20" fill="white" opacity="0.75"/>
+
+  <!-- Inner screen / viewing area -->
+  <rect x="112" y="270" width="800" height="484" rx="40" fill="#1A1A1A"/>
+
+  <!-- Play button triangle -->
+  <path d="M390 370 L700 512 L390 654 Z" fill="white"/>
+
+  <!-- Timeline bar at bottom of screen -->
+  <rect x="148" y="700" width="748" height="18" rx="9" fill="white" opacity="0.15"/>
+  <rect x="148" y="700" width="340" height="18" rx="9" fill="white" opacity="0.65"/>
+  <!-- Playhead circle -->
+  <circle cx="488" cy="709" r="28" fill="white"/>
+</svg>
