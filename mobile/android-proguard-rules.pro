@@ -60,3 +60,16 @@
 -dontwarn com.facebook.**
 -dontwarn javax.annotation.**
 -dontwarn sun.misc.Unsafe
+
+# ── MediaPipe / AutoValue annotation-processor classes ────────────────────────
+# These javax.lang.model.* classes are JDK annotation-processor APIs —
+# they exist at compile time only, not on Android devices at runtime.
+# Safe to ignore because they are never called at runtime.
+-dontwarn javax.lang.model.**
+-dontwarn javax.lang.model.element.**
+-dontwarn javax.lang.model.type.**
+-dontwarn javax.lang.model.util.**
+-dontwarn autovalue.shaded.**
+-dontwarn autovalue.shaded.com.squareup.**
+-dontwarn com.google.auto.value.**
+-dontwarn com.squareup.javapoet.**
