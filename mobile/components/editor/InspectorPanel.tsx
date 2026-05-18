@@ -38,11 +38,16 @@ const CLIP_REVERT_DEFAULTS: Partial<Clip> = {
   hslHue: [0,0,0,0,0,0], hslSat: [0,0,0,0,0,0], hslLum: [0,0,0,0,0,0],
   filter: null, filterIntensity: 100, lutUri: null, lutName: null,
   opacity: 1, rotation: 0, scaleX: 1, scaleY: 1, flipH: false, flipV: false,
-  motionBlur: false, speed: 1, speedRampCurve: 'constant',
+  motionBlur: false, speed: 1, speedRampCurve: 'constant' as const,
   chromaKeyEnabled: false, chromaKeyColor: '#00FF00', chromaKeyThreshold: 30,
   stabilize: false, denoise: false, enhance: false,
   animTracks: [], volumeKeyframes: [], volume: 1, fadeIn: 0, fadeOut: 0,
-  reverse: false,
+  reverse: false, trimStart: 0, trimEnd: 0,
+  kenBurns: { ...DEFAULT_KEN_BURNS },
+  parallaxEnabled: false,
+  backgroundRemovalEnabled: false,
+  transitionType: 'none', clipTransitionIn: 'none', clipTransitionOut: 'none',
+  maskType: 'none',
 };
 
 function SliderRow({
@@ -496,6 +501,12 @@ export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
                   <Text style={styles.resetBtnText}>Reset</Text>
                 </TouchableOpacity>
               </View>
+              {/* Preview note for video clips */}
+              {clip.type === 'video' && (
+                <Text style={[styles.envelopeHint, { marginBottom: 4 }]}>
+                  Color grading previews via CSS filter. Fully applied at export via native processing.
+                </Text>
+              )}
               {/* Quick color grade presets */}
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                 {([
@@ -508,7 +519,10 @@ export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
                   <TouchableOpacity
                     key={preset.name}
                     style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border }}
-                    onPress={() => updateClip(clip.id, { brightness: 0, contrast: 0, saturation: 0, temperature: 0, tint: 0, highlights: 0, shadows: 0, sharpness: 0, ...preset.values }, `preset ${preset.name}`)}
+                    onPress={() => {
+                      const base = { brightness: 0, contrast: 0, saturation: 0, temperature: 0, tint: 0, highlights: 0, shadows: 0, sharpness: 0 };
+                      updateClip(clip.id, Object.assign(base, preset.values), `preset ${preset.name}`);
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={{ fontSize: 11, color: colors.textSecondary, fontWeight: typography.medium }}>{preset.name}</Text>
@@ -521,7 +535,7 @@ export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
                 onPress={async () => {
                   try {
                     const adjustments = await autoAdjustClip(clip.uri);
-                    updateClip(clip.id, { ...adjustments, autoAdjusted: true }, 'auto adjust');
+                    updateClip(clip.id, { ...adjustments }, 'auto adjust');
                   } catch {}
                 }}
                 activeOpacity={0.8}
@@ -834,11 +848,14 @@ export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
                 </>
               )}
 
-              {/* Background removal (video clips only) */}
+              {/* Background removal / auto cutout (video clips only) */}
               {clip.type === 'video' && (
                 <>
                   <View style={styles.divider} />
-                  <Text style={styles.sectionTitle}>Background Removal</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                    <Text style={styles.sectionTitle}>Auto Cutout</Text>
+                    <Text style={styles.exportOnlyBadge}>Export only · needs rebuild</Text>
+                  </View>
                   <ToggleRow
                     label="Remove background"
                     value={(clip as any).backgroundRemovalEnabled ?? false}
@@ -854,7 +871,7 @@ export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
                         onChange={v => optimistic('backgroundFeather' as any, v)}
                         onCommit={() => commit('backgroundFeather')}
                       />
-                      <Text style={styles.envelopeHint}>Background removal applied at export (requires APK rebuild)</Text>
+                      <Text style={styles.envelopeHint}>Applied at export · no preview available until APK rebuild</Text>
                     </>
                   )}
                 </>

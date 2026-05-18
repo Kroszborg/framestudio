@@ -507,7 +507,7 @@ const PhotoGLPreview = forwardRef<PhotoGLPreviewRef, Props>(function PhotoGLPrev
           compress: 0.95,
           rect: undefined,
         });
-        return snap.uri;
+        return typeof snap.uri === 'string' ? snap.uri : null;
       } catch (e) {
         console.warn('[PhotoGL] capture error:', e);
         return null;

@@ -16,6 +16,7 @@ import {
 import { useProjectStore } from '../../lib/projectStore';
 import { autoAdjustClip } from '../../lib/autoAdjust';
 import { colors, typography, spacing, radius } from '../../lib/theme';
+import type { Clip } from '../../lib/database';
 
 type Tab = 'adjust' | 'color' | 'filters' | 'crop' | 'text' | 'sticker' | 'mask';
 
@@ -98,7 +99,7 @@ function SliderRow({
 }
 
 // ── Adjust panel (opacity, transform) ────────────────────────────────────────
-function AdjustPanel({ clip }: { clip: ReturnType<ReturnType<typeof useProjectStore>['getSelectedClip']> }) {
+function AdjustPanel({ clip }: { clip: Clip | null | undefined }) {
   const { updateClipOptimistic, commitClipUpdate } = useProjectStore();
   if (!clip) return <NoClipHint />;
   const opt = (k: keyof typeof clip, v: number) => updateClipOptimistic(clip.id, { [k]: v } as any);
@@ -140,7 +141,7 @@ function AdjustPanel({ clip }: { clip: ReturnType<ReturnType<typeof useProjectSt
 const HSL_CHANNELS = ['Reds', 'Oranges', 'Yellows', 'Greens', 'Cyans', 'Blues'];
 const HSL_COLORS   = ['#EF4444', '#F97316', '#EAB308', '#22C55E', '#06B6D4', '#3B82F6'];
 
-function PhotoHSLPanel({ clip }: { clip: ReturnType<ReturnType<typeof useProjectStore>['getSelectedClip']> }) {
+function PhotoHSLPanel({ clip }: { clip: Clip | null | undefined }) {
   const { updateClipOptimistic, commitClipUpdate, updateClip } = useProjectStore();
   const [activeChannel, setActiveChannel] = useState(0);
   if (!clip) return null;
@@ -188,7 +189,7 @@ function PhotoHSLPanel({ clip }: { clip: ReturnType<ReturnType<typeof useProject
 }
 
 // ── Color panel ───────────────────────────────────────────────────────────────
-function ColorPanel({ clip }: { clip: ReturnType<ReturnType<typeof useProjectStore>['getSelectedClip']> }) {
+function ColorPanel({ clip }: { clip: Clip | null | undefined }) {
   const { updateClipOptimistic, commitClipUpdate, updateClip } = useProjectStore();
   if (!clip) return <NoClipHint />;
   const opt = (k: keyof typeof clip, v: number) => updateClipOptimistic(clip.id, { [k]: v } as any);
@@ -232,7 +233,7 @@ const FILTER_COLORS: Record<string, string> = {
 };
 
 // ── Mask panel ────────────────────────────────────────────────────────────────
-function MaskPanel({ clip }: { clip: ReturnType<ReturnType<typeof useProjectStore>['getSelectedClip']> }) {
+function MaskPanel({ clip }: { clip: Clip | null | undefined }) {
   const { updateClip, updateClipOptimistic, commitClipUpdate } = useProjectStore();
   if (!clip) return <NoClipHint />;
   const opt = (k: string, v: any) => updateClipOptimistic(clip.id, { [k]: v } as any);
@@ -305,7 +306,7 @@ function MaskPanel({ clip }: { clip: ReturnType<ReturnType<typeof useProjectStor
 }
 
 // ── Filters panel ─────────────────────────────────────────────────────────────
-function FiltersPanel({ clip }: { clip: ReturnType<ReturnType<typeof useProjectStore>['getSelectedClip']> }) {
+function FiltersPanel({ clip }: { clip: Clip | null | undefined }) {
   const { updateClip, updateClipOptimistic, commitClipUpdate } = useProjectStore();
   if (!clip) return <NoClipHint />;
   return (
