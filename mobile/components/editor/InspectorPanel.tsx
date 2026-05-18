@@ -909,7 +909,7 @@ export default function InspectorPanel() {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: colors.bgElevated, borderTopWidth: 1, borderTopColor: colors.border },
+  container: { flex: 1, backgroundColor: colors.bgElevated, borderTopWidth: 1, borderTopColor: colors.border },
   tabBar: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
   tab: { flex: 1, alignItems: 'center', paddingVertical: spacing[2] + 2 },
   tabActive: { borderBottomWidth: 2, borderBottomColor: colors.accent },

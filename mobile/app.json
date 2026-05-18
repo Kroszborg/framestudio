@@ -40,6 +40,7 @@
     },
     "plugins": [
       "expo-router",
+      "./plugins/withProguard",
       [
         "expo-media-library",
         {
@@ -55,7 +56,16 @@
         }
       ],
       "expo-video",
-      "expo-screen-orientation"
+      "expo-screen-orientation",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "description": "FrameStudio — Professional video, photo & audio editor. Multi-track timeline, filters, transitions, Ken Burns, audio mixer and 4K export.",
     "backgroundColor": "#0A0A0F",
