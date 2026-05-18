@@ -269,16 +269,18 @@ void main() {
     c = mix(vec3(lum2), c, 1.0 + vib);
   }
 
-  // Clarity: micro-contrast (enhance local contrast / texture)
+  // Clarity: micro-contrast boost via 4-tap box blur on aspect-ratio-corrected UV
+  // Using uv (not vUV) prevents sampling into the letterbox area which caused
+  // image duplication and pixelation artifacts at non-zero clarity values.
   if (abs(uClarity) > 0.01) {
+    vec2 off = vec2(0.004, 0.004);
     vec3 blurC = vec3(0.0);
-    float offsets[4];
-    offsets[0] = -0.01; offsets[1] = 0.01; offsets[2] = -0.01; offsets[3] = 0.01;
-    for (int i = 0; i < 4; i++) {
-      blurC += texture2D(uTex, vUV + vec2(offsets[i], offsets[i < 2 ? i : i - 2] * (i < 2 ? 0.0 : 1.0))).rgb * 0.25;
-    }
+    blurC += texture2D(uTex, clamp(uv + vec2(-off.x, 0.0), 0.0, 1.0)).rgb * 0.25;
+    blurC += texture2D(uTex, clamp(uv + vec2( off.x, 0.0), 0.0, 1.0)).rgb * 0.25;
+    blurC += texture2D(uTex, clamp(uv + vec2(0.0, -off.y), 0.0, 1.0)).rgb * 0.25;
+    blurC += texture2D(uTex, clamp(uv + vec2(0.0,  off.y), 0.0, 1.0)).rgb * 0.25;
     float luminance_diff = dot(c - blurC, LUM);
-    c += uClarity * luminance_diff * 2.0;
+    c = clamp(c + uClarity * luminance_diff * 1.5, 0.0, 1.0);
   }
 
   // Dehaze: remove atmospheric haze (increase clarity in bright areas)

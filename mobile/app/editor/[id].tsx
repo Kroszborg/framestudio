@@ -461,7 +461,7 @@ export default function EditorScreen() {
         <View style={styles.landscapeLeft}>
           <VideoPreview clips={clips} currentTime={currentTime} project={project} />
           <Animated.View style={{ height: inspectorH, overflow: 'hidden' }}>
-            <InspectorPanel />
+            <InspectorPanel onClose={() => setInspectorOpen(false)} />
           </Animated.View>
         </View>
         <View style={styles.landscapeRight}>
@@ -549,7 +549,7 @@ export default function EditorScreen() {
 
           {/* Inspector (collapsible) */}
           <Animated.View style={{ height: inspectorH, overflow: 'hidden' }}>
-            <InspectorPanel />
+            <InspectorPanel onClose={() => setInspectorOpen(false)} />
           </Animated.View>
 
           {/* Multi-select action bar */}

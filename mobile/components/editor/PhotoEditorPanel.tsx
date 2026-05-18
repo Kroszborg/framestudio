@@ -4,7 +4,7 @@
  */
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Alert,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useRouter, type Href } from 'expo-router';
@@ -18,6 +18,17 @@ import { autoAdjustClip } from '../../lib/autoAdjust';
 import { colors, typography, spacing, radius } from '../../lib/theme';
 
 type Tab = 'adjust' | 'color' | 'filters' | 'crop' | 'text' | 'sticker' | 'mask';
+
+const PHOTO_REVERT_DEFAULTS = {
+  brightness: 0, contrast: 0, saturation: 0, temperature: 0,
+  tint: 0, highlights: 0, shadows: 0, sharpness: 0,
+  exposure: 0, vibrance: 0, clarity: 0, dehaze: 0,
+  blacks: 0, whites: 0, fade: 0, grain: 0,
+  hslHue: [0,0,0,0,0,0], hslSat: [0,0,0,0,0,0], hslLum: [0,0,0,0,0,0],
+  filter: null as string | null, filterIntensity: 100, lutUri: null as string | null, lutName: null as string | null,
+  opacity: 1, rotation: 0, scaleX: 1, scaleY: 1, flipH: false, flipV: false,
+  motionBlur: false, maskType: 'none' as const,
+};
 
 const TABS: { id: Tab; label: string; icon: any }[] = [
   { id: 'adjust', label: 'Adjust', icon: MixerIcon },
@@ -351,8 +362,24 @@ interface Props {
 export default function PhotoEditorPanel({ onAddMedia, projectId, currentTime }: Props) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>('adjust');
-  const { getSelectedClip } = useProjectStore();
+  const { getSelectedClip, updateClip } = useProjectStore();
   const clip = getSelectedClip();
+
+  function handleRevert() {
+    if (!clip) return;
+    Alert.alert(
+      'Revert to original',
+      'This will remove all edits (color, adjustments, filters) and cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Revert',
+          style: 'destructive',
+          onPress: () => updateClip(clip.id, PHOTO_REVERT_DEFAULTS, 'revert to original'),
+        },
+      ],
+    );
+  }
 
   function handleTabPress(tab: Tab) {
     setActiveTab(tab);
@@ -407,6 +434,18 @@ export default function PhotoEditorPanel({ onAddMedia, projectId, currentTime }:
             );
           })}
         </ScrollView>
+        {/* Revert button — always visible in tab bar */}
+        {clip && (
+          <TouchableOpacity
+            style={styles.revertBtn}
+            onPress={handleRevert}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <HugeiconsIcon icon={ArrowReloadHorizontalIcon} size={14} color={colors.error} />
+            <Text style={styles.revertBtnText}>Revert</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Active panel */}
@@ -429,6 +468,8 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   tabBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     height: 52,
@@ -439,6 +480,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[2],
     height: 52,
     gap: 4,
+  },
+  revertBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+    marginRight: spacing[2],
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.error,
+    backgroundColor: 'rgba(239,68,68,0.08)',
+  },
+  revertBtnText: {
+    fontSize: 10,
+    color: colors.error,
+    fontWeight: typography.semibold,
   },
   tab: {
     flexDirection: 'column',

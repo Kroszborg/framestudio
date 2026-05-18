@@ -13,7 +13,7 @@ import Slider from '@react-native-community/slider';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { HugeiconsIcon } from '@hugeicons/react-native';
-import { KeyframeIcon, BlurIcon, Move01Icon, ArrowReloadHorizontalIcon, SpeedTrain01Icon, VideoReplayIcon, BrushIcon, MixerIcon, FlipHorizontalIcon, FlipVerticalIcon } from '@hugeicons/core-free-icons';
+import { KeyframeIcon, BlurIcon, Move01Icon, ArrowReloadHorizontalIcon, SpeedTrain01Icon, VideoReplayIcon, BrushIcon, MixerIcon, FlipHorizontalIcon, FlipVerticalIcon, Cancel01Icon } from '@hugeicons/core-free-icons';
 import { useProjectStore } from '../../lib/projectStore';
 import { colors, typography, spacing, radius } from '../../lib/theme';
 import { Clip, KenBurnsConfig, VolumeKeyframe, DEFAULT_KEN_BURNS } from '../../lib/database';
@@ -28,6 +28,22 @@ const TABS = [
   { id: 'audio', label: 'Audio' },
   { id: 'keyframes', label: 'Keys' },
 ] as const;
+
+// All editable properties reset by "Revert to original"
+const CLIP_REVERT_DEFAULTS: Partial<Clip> = {
+  brightness: 0, contrast: 0, saturation: 0, temperature: 0,
+  tint: 0, highlights: 0, shadows: 0, sharpness: 0,
+  exposure: 0, vibrance: 0, clarity: 0, dehaze: 0,
+  blacks: 0, whites: 0, fade: 0, grain: 0,
+  hslHue: [0,0,0,0,0,0], hslSat: [0,0,0,0,0,0], hslLum: [0,0,0,0,0,0],
+  filter: null, filterIntensity: 100, lutUri: null, lutName: null,
+  opacity: 1, rotation: 0, scaleX: 1, scaleY: 1, flipH: false, flipV: false,
+  motionBlur: false, speed: 1, speedRampCurve: 'constant',
+  chromaKeyEnabled: false, chromaKeyColor: '#00FF00', chromaKeyThreshold: 30,
+  stabilize: false, denoise: false, enhance: false,
+  animTracks: [], volumeKeyframes: [], volume: 1, fadeIn: 0, fadeOut: 0,
+  reverse: false,
+};
 
 function SliderRow({
   label, value, min, max, step = 1, unit = '', onChange, onCommit,
@@ -334,7 +350,7 @@ function HSLPanel({ clip, updateClip, updateClipOptimistic, commitClipUpdate }: 
   );
 }
 
-export default function InspectorPanel() {
+export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
   const { activeInspectorTab, setActiveInspectorTab, selectedClipId, getSelectedClip, updateClip, updateClipOptimistic, commitClipUpdate } = useProjectStore();
   const clip = getSelectedClip();
 
@@ -379,6 +395,16 @@ export default function InspectorPanel() {
             </Text>
           </TouchableOpacity>
         ))}
+        {onClose && (
+          <TouchableOpacity
+            style={styles.closeTabBtn}
+            onPress={onClose}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <HugeiconsIcon icon={Cancel01Icon} size={14} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {!clip ? (
@@ -386,6 +412,28 @@ export default function InspectorPanel() {
           <Text style={styles.emptyText}>Select a clip to inspect</Text>
         </View>
       ) : (
+        <>
+        <TouchableOpacity
+          style={styles.revertRow}
+          onPress={() => {
+            Alert.alert(
+              'Revert to original',
+              'This will remove all edits for this clip (color, effects, transform, speed, volume) and cannot be undone.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Revert',
+                  style: 'destructive',
+                  onPress: () => updateClip(clip.id, CLIP_REVERT_DEFAULTS, 'revert to original'),
+                },
+              ],
+            );
+          }}
+          activeOpacity={0.7}
+        >
+          <HugeiconsIcon icon={ArrowReloadHorizontalIcon} size={12} color={colors.error} />
+          <Text style={styles.revertRowText}>Revert clip to original</Text>
+        </TouchableOpacity>
         <ScrollView horizontal={false} showsVerticalScrollIndicator={false} style={styles.content} nestedScrollEnabled keyboardShouldPersistTaps="handled">
           {activeInspectorTab === 'clip' && (
             <View style={styles.section}>
@@ -682,13 +730,22 @@ export default function InspectorPanel() {
               )}
               {/* Enhancement */}
               <View style={styles.divider} />
-              <Text style={styles.sectionTitle}>Enhancement</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                <Text style={styles.sectionTitle}>Enhancement</Text>
+                <Text style={styles.exportOnlyBadge}>Export only</Text>
+              </View>
               <ToggleRow label="Quality Enhance" value={clip.enhance ?? false} onChange={v => update('enhance', v)} icon={MixerIcon} />
               <ToggleRow label="Stabilize" value={clip.stabilize ?? false} onChange={v => update('stabilize', v)} icon={VideoReplayIcon} />
               <ToggleRow label="Denoise" value={clip.denoise ?? false} onChange={v => update('denoise', v)} icon={MixerIcon} />
+              {(clip.stabilize || clip.denoise || clip.enhance) && (
+                <Text style={styles.envelopeHint}>Stabilize/Denoise/Enhance are applied at export — no visual change in preview.</Text>
+              )}
               {/* Chroma key */}
               <View style={styles.divider} />
-              <Text style={styles.sectionTitle}>Chroma Key</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                <Text style={styles.sectionTitle}>Chroma Key</Text>
+                {clip.type === 'video' && <Text style={styles.exportOnlyBadge}>Needs rebuild for preview</Text>}
+              </View>
               <ToggleRow label="Green screen" value={clip.chromaKeyEnabled ?? false} onChange={v => update('chromaKeyEnabled', v)} icon={BrushIcon} />
               {(clip.chromaKeyEnabled ?? false) && (
                 <>
@@ -903,6 +960,7 @@ export default function InspectorPanel() {
             </View>
           )}
         </ScrollView>
+        </>
       )}
     </View>
   );
@@ -910,11 +968,29 @@ export default function InspectorPanel() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgElevated, borderTopWidth: 1, borderTopColor: colors.border },
-  tabBar: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
+  tabBar: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border },
   tab: { flex: 1, alignItems: 'center', paddingVertical: spacing[2] + 2 },
   tabActive: { borderBottomWidth: 2, borderBottomColor: colors.accent },
   tabText: { fontSize: typography.xs + 1, color: colors.textMuted, fontWeight: typography.medium },
   tabTextActive: { color: colors.accent, fontWeight: typography.semibold },
+  closeTabBtn: {
+    width: 32, height: 32, alignItems: 'center', justifyContent: 'center',
+    marginRight: spacing[1],
+  },
+  revertRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: spacing[3], paddingVertical: 6,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+    backgroundColor: 'rgba(239,68,68,0.06)',
+  },
+  revertRowText: {
+    fontSize: typography.xs, color: colors.error, fontWeight: typography.medium,
+  },
+  exportOnlyBadge: {
+    fontSize: 9, color: colors.textMuted, fontStyle: 'italic',
+    backgroundColor: colors.surface2, paddingHorizontal: 5, paddingVertical: 2,
+    borderRadius: 4, borderWidth: 1, borderColor: colors.border,
+  },
   empty: { height: 60, alignItems: 'center', justifyContent: 'center' },
   emptyText: { fontSize: typography.sm, color: colors.textMuted },
   content: { flex: 1 },
