@@ -134,6 +134,40 @@ export default function KeyframeEditor({
             }}
           />
         ))}
+      </View>
+
+      {/* Selected keyframe controls */}
+      {selected !== null && selectedIdx !== null && (
+        <View style={styles.kfControls}>
+          <Text style={styles.kfTime}>Time: {Math.round(selected.time)}ms</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8, marginTop: 4 }}>
+            <Text style={{ fontSize: 10, color: colors.textMuted }}>Value:</Text>
+            <Slider
+              style={{ flex: 1, height: 24 }}
+              minimumValue={track.param.startsWith('scale') ? 0 : track.param.startsWith('opacity') ? 0 : track.param.startsWith('brightness') || track.param.startsWith('saturation') ? -100 : track.param.startsWith('pos') ? -1000 : 0}
+              maximumValue={track.param.startsWith('scale') ? 3 : track.param.startsWith('opacity') ? 1 : track.param.startsWith('brightness') || track.param.startsWith('saturation') ? 100 : track.param.startsWith('pos') ? 1000 : 360}
+              value={selected.value}
+              onValueChange={(val) => {
+                 const updated = track.keyframes.map((k, i) => i === selectedIdx ? { ...k, value: val } : k);
+                 onUpdateTrack({ ...track, keyframes: updated });
+              }}
+              minimumTrackTintColor={colors.accent}
+              maximumTrackTintColor={colors.surface2}
+            />
+            <Text style={{ fontSize: 10, color: colors.textPrimary }}>{selected.value.toFixed(2)}</Text>
+          </View>
+          {/* Easing presets */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 4, paddingVertical: 4 }}>
+            {EASING_PRESETS.map(e => (
+              <TouchableOpacity
+                key={e.id}
+                style={[styles.easingChip, selected.easing === e.id && styles.easingChipActive]}
+                onPress={() => updateEasing(selectedIdx, e.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.easingChipText, selected.easing === e.id && styles.easingChipTextActive]}>{e.label}</Text>
+              </TouchableOpacity>
+            ))}
           </ScrollView>
           {/* Bezier graph — shown for all easings, interactive for 'custom' */}
           <KeyframeGraph

@@ -662,8 +662,8 @@ function TransitionOverlay({ type, progress }: { type: string; progress: number 
     const pct = `${eased * 50}%` as any;
     return (
       <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-        <View style={{ position: 'absolute', top: 0, left: 0, right: '50%', bottom: 0, backgroundColor: '#000', transform: [{ translateX: `-${eased * 100}%` }] }} />
-        <View style={{ position: 'absolute', top: 0, left: '50%', right: 0, bottom: 0, backgroundColor: '#000', transform: [{ translateX: `${eased * 100}%` }] }} />
+        <View style={{ position: 'absolute', top: 0, left: 0, right: '50%', bottom: 0, backgroundColor: '#000', transform: [{ translateX: `-${eased * 100}%` as any }] }} />
+        <View style={{ position: 'absolute', top: 0, left: '50%', right: 0, bottom: 0, backgroundColor: '#000', transform: [{ translateX: `${eased * 100}%` as any }] }} />
       </View>
     );
   }

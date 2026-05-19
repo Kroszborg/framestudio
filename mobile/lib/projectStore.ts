@@ -9,6 +9,7 @@ import {
   getStickerOverlays, createStickerOverlay as dbCreateSticker,
   updateStickerOverlay as dbUpdateSticker,
   deleteStickerOverlay as dbDeleteSticker,
+  DEFAULT_KEN_BURNS,
 } from './database';
 import { useToastStore } from './toast';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -405,7 +406,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       id: `${clip.id}_a_${Date.now()}`,
       duration: clip.duration,
       trimEnd: clip.duration - clip.trimStart - clipRelative,
-      kenBurns: undefined,
+      kenBurns: { ...DEFAULT_KEN_BURNS },
     };
     const partB: Clip = {
       ...clip,
@@ -415,7 +416,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       trimEnd: clip.trimEnd,
       duration: clip.duration,
       orderIndex: clip.orderIndex + 0.5,
-      kenBurns: undefined,
+      kenBurns: { ...DEFAULT_KEN_BURNS },
     };
 
     const newClips = clips.filter(c => c.id !== id);

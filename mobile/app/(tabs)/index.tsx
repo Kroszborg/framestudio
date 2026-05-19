@@ -325,23 +325,20 @@ export default function HomeScreen() {
   }
 
   function handleCreateFolder() {
-    Alert.prompt?.('New folder', 'Enter folder name', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Create',
-        onPress: async (name?: string) => {
-          if (!name?.trim()) return;
-          const folder: Folder = {
-            id: `fld_${Date.now()}`,
-            name: name.trim(),
-            color: colors.textMuted,
-            createdAt: Date.now(),
-          };
-          await createFolder(folder);
-          setFolders(prev => [...prev, folder]);
-        },
-      },
-    ]) ?? Alert.alert('New folder', 'Enter a name in settings');
+    setFolderPromptVisible(true);
+  }
+
+  async function onFolderSubmit(name: string) {
+    if (!name.trim()) return;
+    const folder: Folder = {
+      id: `fld_${Date.now()}`,
+      name: name.trim(),
+      color: colors.textMuted,
+      createdAt: Date.now(),
+    };
+    await createFolder(folder);
+    setFolderPromptVisible(false);
+    loadData();
   }
 
   function handleDeleteFolder(folder: Folder) {
