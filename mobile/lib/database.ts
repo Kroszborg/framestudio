@@ -275,6 +275,7 @@ async function writeDB(db: DB): Promise<void> {
     console.error('[database] writeDB failed, retrying once:', err);
     try {
       await (FileSystem as any).writeAsStringAsync(DB_FILE, JSON.stringify(db));
+    } catch (retryErr) {
       console.error('[database] writeDB retry also failed:', retryErr);
       throw retryErr;
     }
