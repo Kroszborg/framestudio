@@ -8,6 +8,7 @@ import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, PanResponder,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { colors, typography, spacing, radius } from '../../lib/theme';
 import { ClipAnimTrack, AnimKeyframe, EasingType } from '../../lib/keyframes';
 import KeyframeGraph from './KeyframeGraph';
@@ -33,6 +34,33 @@ interface Props {
   currentTimeMs: number;
   onUpdateTrack: (updated: ClipAnimTrack) => void;
   onDeleteTrack: () => void;
+}
+
+
+function DraggableDiamond({ kf, timeToX, xToTime, isSelected, onSelect, onDragEnd }: any) {
+  const pan = React.useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dx) > 2,
+      onPanResponderGrant: () => onSelect(),
+      onPanResponderRelease: (_, gs) => {
+        onDragEnd(gs.dx);
+      }
+    })
+  ).current;
+
+  return (
+    <View
+      style={{ position: 'absolute', left: timeToX(kf.time) - 10, top: 2, width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}
+      {...pan.panHandlers}
+    >
+      <TouchableOpacity
+        style={[styles.diamond, isSelected && styles.diamondSelected, { left: undefined, top: undefined, position: 'relative' }]}
+        onPress={onSelect}
+        activeOpacity={0.8}
+      />
+    </View>
+  );
 }
 
 export default function KeyframeEditor({
@@ -87,31 +115,25 @@ export default function KeyframeEditor({
         <View style={[styles.playhead, { left: timeToX(currentTimeMs) }]} />
         {/* Keyframe diamonds */}
         {track.keyframes.map((kf, i) => (
-          <TouchableOpacity
+          <DraggableDiamond
             key={i}
-            style={[styles.diamond, { left: timeToX(kf.time) - 6 }, selectedIdx === i && styles.diamondSelected]}
-            onPress={() => setSelectedIdx(selectedIdx === i ? null : i)}
-            activeOpacity={0.8}
+            kf={kf}
+            timeToX={timeToX}
+            xToTime={xToTime}
+            isSelected={selectedIdx === i}
+            onSelect={() => setSelectedIdx(selectedIdx === i ? null : i)}
+            onDragEnd={(dx: number) => {
+              const msDelta = (dx / STRIP_W) * clipDurationMs;
+              const newTime = Math.max(0, Math.min(clipDurationMs, kf.time + msDelta));
+              const updated = track.keyframes.map((k, j) => j === i ? { ...k, time: newTime } : k);
+              updated.sort((a, b) => a.time - b.time);
+              onUpdateTrack({ ...track, keyframes: updated });
+              // Keep selection on the same keyframe object
+              const newIdx = updated.findIndex(k => k.time === newTime);
+              setSelectedIdx(newIdx !== -1 ? newIdx : null);
+            }}
           />
         ))}
-      </View>
-
-      {/* Selected keyframe controls */}
-      {selected !== null && selectedIdx !== null && (
-        <View style={styles.kfControls}>
-          <Text style={styles.kfTime}>{Math.round(selected.time)}ms</Text>
-          {/* Easing presets */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 4, paddingVertical: 4 }}>
-            {EASING_PRESETS.map(e => (
-              <TouchableOpacity
-                key={e.id}
-                style={[styles.easingChip, selected.easing === e.id && styles.easingChipActive]}
-                onPress={() => updateEasing(selectedIdx, e.id)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.easingChipText, selected.easing === e.id && styles.easingChipTextActive]}>{e.label}</Text>
-              </TouchableOpacity>
-            ))}
           </ScrollView>
           {/* Bezier graph — shown for all easings, interactive for 'custom' */}
           <KeyframeGraph

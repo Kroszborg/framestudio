@@ -132,7 +132,9 @@ export async function processVideoForExport(
   const outputPath = `${outputDir}${clip.id}_processed.${ext}`;
   
   try {
-    // Copy source to output directory
+    // Note: This is a fallback that just copies the source file.
+    // It DOES NOT apply trims, color grading, or effects.
+    // True export requires expo-video-processor or FFmpeg.
     await FileSystem.copyAsync({
       from: clip.uri,
       to: outputPath,
@@ -181,11 +183,10 @@ export async function applyColorGrading(
     return applyColorGradingWeb(imageUri, clip, outputPath);
   }
   
-  // On native without GL context, use expo-image-manipulator for what it supports
-  // Color grading metadata is embedded in the export sidecar
-  // For image exports, the manipulator handles resize/crop/rotate
-  // True color grading on native requires expo-gl or a native module
-  
+  // On native without GL context, we just return the original URI.
+  // True color grading on native requires the GL-captured image
+  // from PhotoGLPreview, which exportEngine.ts passes in when available.
+  // If we reach here, it means GL capture was unavailable, so color grading is skipped.
   return imageUri;
 }
 

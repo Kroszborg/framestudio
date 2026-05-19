@@ -82,3 +82,4 @@ packages/mobile/scripts/*
 .claude/
 .claude/settings.local.json
 web/public/download/FrameStudio-v1.0.apk
+/.antigravitycli

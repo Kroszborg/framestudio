@@ -75,21 +75,57 @@ interface VideoPreviewProps {
   project: Project;
 }
 
-/** Build CSS filter string for web preview */
+/** Build CSS filter string for web preview — matches buildVideoFilter logic */
 function getCSSFilterString(clip: Clip): string {
   const parts: string[] = [];
 
-  // Brightness: -100..100 → CSS brightness(0.33..1.67)
-  if (clip.brightness !== 0) {
-    parts.push(`brightness(${1 + clip.brightness / 150})`);
+  // Exposure + Brightness + Highlights/Shadows/Whites/Blacks
+  const evBoost = (clip.exposure ?? 0) * 30;
+  const eff = (clip.brightness ?? 0) + evBoost;
+  const highlightBoost = (clip.highlights ?? 0) * 0.15;
+  const shadowBoost = (clip.shadows ?? 0) * 0.12;
+  const whitesBoost = (clip.whites ?? 0) * 0.1;
+  const blacksBoost = (clip.blacks ?? 0) * 0.08;
+  const totalBrightness = eff + highlightBoost + shadowBoost + whitesBoost + blacksBoost;
+  if (Math.abs(totalBrightness) > 0.5) {
+    parts.push(`brightness(${Math.max(0.01, 1 + totalBrightness / 150)})`);
   }
-  // Contrast: -100..100 → CSS contrast(0.5..1.5)
-  if (clip.contrast !== 0) {
-    parts.push(`contrast(${1 + clip.contrast / 200})`);
+
+  // Contrast + Clarity + Dehaze
+  const clarityBoost = (clip.clarity ?? 0) * 0.12;
+  const dehazeContrast = (clip.dehaze ?? 0) * 0.15;
+  const totalContrast = (clip.contrast ?? 0) + clarityBoost + dehazeContrast;
+  if (Math.abs(totalContrast) > 0.5) {
+    parts.push(`contrast(${Math.max(0.01, 1 + totalContrast / 150)})`);
   }
-  // Saturation: -100..100 → CSS saturate(0..2)
-  if (clip.saturation !== 0) {
-    parts.push(`saturate(${1 + clip.saturation / 100})`);
+
+  // Saturation + Vibrance + Dehaze
+  const vibranceBoost = (clip.vibrance ?? 0) * 0.5;
+  const dehazeSat = (clip.dehaze ?? 0) * 0.1;
+  const totalSat = (clip.saturation ?? 0) + vibranceBoost + dehazeSat;
+  const satMult = Math.max(0, 1 + totalSat / 100);
+  if (Math.abs(satMult - 1) > 0.01) {
+    parts.push(`saturate(${satMult})`);
+  }
+
+  // Fade → washed-out look
+  const fade = clip.fade ?? 0;
+  if (fade > 1) {
+    parts.push(`brightness(${Math.min(1.3, 1 + fade / 300)})`);
+    parts.push(`contrast(${Math.max(0.5, 1 - fade / 200)})`);
+  }
+
+  if ((clip.sharpness ?? 0) > 0) {
+    parts.push(`contrast(${1 + clip.sharpness / 300})`);
+  }
+
+  if (clip.motionBlur) {
+    parts.push(`blur(2px)`);
+  }
+
+  // Temperature → hue rotation
+  if (Math.abs(clip.temperature ?? 0) > 2) {
+    parts.push(`hue-rotate(${-(clip.temperature / 100) * 15}deg)`);
   }
 
   // Named filter presets
@@ -128,7 +164,7 @@ function getCSSFilterString(clip: Clip): string {
       case 'blur':
         parts.push('blur(3px)');
         break;
-      // New cinematic filters
+      // Cinematic filters
       case 'orange_teal': parts.push('saturate(1.3) contrast(1.1) hue-rotate(5deg)'); break;
       case 'moody': parts.push('contrast(1.35) brightness(0.8) saturate(0.7)'); break;
       case 'golden_hour': parts.push('sepia(0.2) saturate(1.4) brightness(1.05) hue-rotate(-15deg)'); break;
@@ -160,28 +196,77 @@ function getTransformStyle(clip: Clip) {
 function hasColorGrading(clip: Clip): boolean {
   return clip.brightness !== 0 || clip.contrast !== 0 || clip.saturation !== 0 ||
     clip.temperature !== 0 || clip.tint !== 0 || clip.highlights !== 0 ||
-    clip.shadows !== 0 || clip.sharpness !== 0 || !!clip.filter;
+    clip.shadows !== 0 || clip.sharpness !== 0 || (clip.exposure ?? 0) !== 0 ||
+    (clip.vibrance ?? 0) !== 0 || (clip.clarity ?? 0) !== 0 ||
+    (clip.dehaze ?? 0) !== 0 || (clip.blacks ?? 0) !== 0 ||
+    (clip.whites ?? 0) !== 0 || (clip.fade ?? 0) !== 0 ||
+    (clip.grain ?? 0) !== 0 || !!clip.filter;
 }
 
 /**
- * Build a CSS filter array for IMAGE components (not VideoView).
- * React Native's filter prop works on Image/View components on all platforms.
- * VideoView (SurfaceView on Android) renders independently — use getVideoColorState instead.
+ * Build a CSS filter array for any clip type (video, image).
+ * React Native's filter prop works on View/Image components on all platforms.
+ * For video clips, this is applied to the wrapper View containing the VideoView.
+ *
+ * Handles: exposure, brightness, contrast, saturation, temperature,
+ * highlights, shadows, whites, blacks, vibrance, clarity, dehaze, fade,
+ * and named filter presets.
  */
 function buildVideoFilter(clip: Clip, extraFilters: Record<string, any>[] = []): Record<string, any>[] | null {
   const f: Record<string, any>[] = [];
 
+  // ── Exposure + Brightness → CSS brightness ────────────────────────────
   const evBoost = (clip.exposure ?? 0) * 30;
   const eff = (clip.brightness ?? 0) + evBoost;
-  if (Math.abs(eff) > 0.5) f.push({ brightness: Math.max(0.01, 1 + eff / 150) });
+  // Highlights/shadows/whites/blacks all contribute to overall brightness
+  const highlightBoost = (clip.highlights ?? 0) * 0.15;  // subtle, affects brights
+  const shadowBoost = (clip.shadows ?? 0) * 0.12;        // subtle, lifts/crushes darks
+  const whitesBoost = (clip.whites ?? 0) * 0.1;
+  const blacksBoost = (clip.blacks ?? 0) * 0.08;
+  const totalBrightness = eff + highlightBoost + shadowBoost + whitesBoost + blacksBoost;
+  if (Math.abs(totalBrightness) > 0.5) {
+    f.push({ brightness: Math.max(0.01, 1 + totalBrightness / 150) });
+  }
 
-  if (Math.abs(clip.contrast ?? 0) > 0.5) f.push({ contrast: Math.max(0.01, 1 + (clip.contrast ?? 0) / 150) });
+  // ── Contrast ──────────────────────────────────────────────────────────
+  // Clarity adds local contrast; dehaze also increases contrast
+  const clarityBoost = (clip.clarity ?? 0) * 0.12;
+  const dehazeContrast = (clip.dehaze ?? 0) * 0.15;
+  const totalContrast = (clip.contrast ?? 0) + clarityBoost + dehazeContrast;
+  if (Math.abs(totalContrast) > 0.5) {
+    f.push({ contrast: Math.max(0.01, 1 + totalContrast / 150) });
+  }
 
-  const satMult = Math.max(0, 1 + (clip.saturation ?? 0) / 100);
+  // ── Saturation + Vibrance ─────────────────────────────────────────────
+  // Vibrance is a gentler saturation boost; dehaze also adds saturation
+  const vibranceBoost = (clip.vibrance ?? 0) * 0.5;
+  const dehazeSat = (clip.dehaze ?? 0) * 0.1;
+  const totalSat = (clip.saturation ?? 0) + vibranceBoost + dehazeSat;
+  const satMult = Math.max(0, 1 + totalSat / 100);
   if (Math.abs(satMult - 1) > 0.01) f.push({ saturate: satMult });
 
-  if (Math.abs(clip.temperature ?? 0) > 2) f.push({ hueRotate: `${-(clip.temperature / 100) * 15}deg` });
+  // ── Fade → desaturation + contrast reduction ─────────────────────────
+  const fade = clip.fade ?? 0;
+  if (fade > 1) {
+    // Fade lifts blacks and reduces contrast for a washed-out look
+    f.push({ brightness: Math.min(1.3, 1 + fade / 300) });
+    f.push({ contrast: Math.max(0.5, 1 - fade / 200) });
+  }
 
+  if ((clip.sharpness ?? 0) > 0) {
+    f.push({ contrast: 1 + clip.sharpness / 300 });
+  }
+
+  if (clip.motionBlur) {
+    f.push({ blur: '2px' });
+  }
+
+  // ── Temperature → hue rotation ────────────────────────────────────────
+  if (Math.abs(clip.temperature ?? 0) > 2) {
+    f.push({ hueRotate: `${-(clip.temperature / 100) * 15}deg` });
+  }
+
+  // ── Named filter presets ──────────────────────────────────────────────
   if (clip.filter) {
     const i = (clip.filterIntensity ?? 100) / 100;
     switch (clip.filter) {
@@ -214,14 +299,12 @@ function buildVideoFilter(clip: Clip, extraFilters: Record<string, any>[] = []):
 }
 
 /**
- * Compute video color grading as overlay Views + VideoView opacity.
+ * Video color grading state for NativePreview.
  *
- * On Android, expo-video's VideoView renders via SurfaceView which bypasses RN's
- * View compositor — CSS `filter` on a parent or the VideoView itself has no effect
- * on its video content. Instead we use:
- *   • VideoView opacity (SurfaceView alpha, all Android versions) for darkening.
- *   • Semi-transparent color overlay Views on top of VideoView for brightening,
- *     temperature, tint, contrast, saturation approximation, and filter tints.
+ * Color tint overlays — temperature, tint, and named filter tints. These are
+ * rendered as View overlays on top of the SurfaceView and are visible on ALL
+ * Android versions. Brightness/contrast/saturation grading is handled by the
+ * CSS filter prop on the wrapper View (via buildVideoFilter).
  */
 interface VideoColorOverlay { color: string; opacity: number; }
 interface VideoColorState { videoOpacity: number; overlays: VideoColorOverlay[]; }
@@ -229,30 +312,11 @@ interface VideoColorState { videoOpacity: number; overlays: VideoColorOverlay[];
 function getVideoColorState(clip: Clip): VideoColorState {
   const overlays: VideoColorOverlay[] = [];
 
-  // Merge brightness + exposure (1 EV ≈ 28 brightness units)
-  const evBoost = (clip.exposure ?? 0) * 28;
-  const eff = (clip.brightness ?? 0) + evBoost;
+  // Positive brightness/exposure is handled by CSS filter on the wrapper View.
+  // Only use opacity to dim when filter-based approach can't be used.
+  const videoOpacity = 1;
 
-  // Darken: reduce VideoView opacity (multiplicative, works on SurfaceView)
-  const videoOpacity = eff < 0 ? Math.max(0.05, 1 + eff / 110) : 1;
-  // Brighten: white overlay (additive, capped at 32%)
-  if (eff > 0) overlays.push({ color: '#FFFFFF', opacity: Math.min(0.32, eff / 310) });
-
-  const contrast = clip.contrast ?? 0;
-  if (contrast > 15)  overlays.push({ color: '#000000', opacity: Math.min(0.14, contrast / 700) });
-  if (contrast < -10) overlays.push({ color: '#808080', opacity: Math.min(0.22, -contrast / 450) });
-
-  const sat = clip.saturation ?? 0;
-  if (sat < -10) overlays.push({ color: '#808080', opacity: Math.min(0.55, -sat / 180) });
-
-  const hl = clip.highlights ?? 0;
-  if (hl < -10) overlays.push({ color: '#000000', opacity: Math.min(0.14, -hl / 700) });
-  if (hl > 10)  overlays.push({ color: '#FFFFFF', opacity: Math.min(0.14, hl / 700) });
-
-  const sh = clip.shadows ?? 0;
-  if (sh > 10)  overlays.push({ color: '#FFFFFF', opacity: Math.min(0.12, sh / 830) });
-  if (sh < -10) overlays.push({ color: '#000000', opacity: Math.min(0.12, -sh / 830) });
-
+  // ── Temperature / tint — color tints look correct as overlays ────────────
   const temp = clip.temperature ?? 0;
   if (temp > 5)  overlays.push({ color: '#FF8C00', opacity: Math.min(0.26, temp / 385) });
   if (temp < -5) overlays.push({ color: '#1E90FF', opacity: Math.min(0.22, -temp / 455) });
@@ -261,6 +325,7 @@ function getVideoColorState(clip: Clip): VideoColorState {
   if (tint > 5)  overlays.push({ color: '#00C853', opacity: Math.min(0.14, tint / 715) });
   if (tint < -5) overlays.push({ color: '#FF00AA', opacity: Math.min(0.14, -tint / 715) });
 
+  // ── Named filter tint overlays — approximate but visible on older Android ─
   if (clip.filter) {
     const fi = (clip.filterIntensity ?? 100) / 100;
     switch (clip.filter) {
@@ -594,11 +659,11 @@ function TransitionOverlay({ type, progress }: { type: string; progress: number 
   }
   // Barn door: two panels opening from center
   if (type === 'barn_door') {
-    const pct = `${(0.5 - eased * 0.5) * 100}%` as any;
+    const pct = `${eased * 50}%` as any;
     return (
       <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-        <View style={{ position: 'absolute', top: 0, left: 0, right: pct, bottom: 0, backgroundColor: '#000' }} />
-        <View style={{ position: 'absolute', top: 0, left: pct, right: 0, bottom: 0, backgroundColor: '#000' }} />
+        <View style={{ position: 'absolute', top: 0, left: 0, right: '50%', bottom: 0, backgroundColor: '#000', transform: [{ translateX: `-${eased * 100}%` }] }} />
+        <View style={{ position: 'absolute', top: 0, left: '50%', right: 0, bottom: 0, backgroundColor: '#000', transform: [{ translateX: `${eased * 100}%` }] }} />
       </View>
     );
   }
@@ -631,15 +696,18 @@ function TransitionOverlay({ type, progress }: { type: string; progress: number 
   if (type === 'cross_zoom') {
     const scale = 1 + eased * 0.4;
     return (
-      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', opacity: eased < 0.5 ? eased : 1 - eased }]} pointerEvents="none" />
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', opacity: eased < 0.5 ? eased : 1 - eased, transform: [{ scale }] }]} pointerEvents="none" />
     );
   }
   // Pixelate: pixelation transition
   if (type === 'pixelate') {
     const blocks = Math.max(1, Math.round((1 - Math.abs(eased - 0.5) * 2) * 20));
-    const blockSize = `${100 / blocks}%` as any;
     return (
-      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', opacity: Math.abs(eased - 0.5) * 0.8 }]} pointerEvents="none" />
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', opacity: Math.abs(eased - 0.5) * 0.8 }]} pointerEvents="none">
+        {Array.from({ length: blocks * blocks }).map((_, i) => (
+          <View key={i} style={{ width: `${100 / blocks}%` as any, height: `${100 / blocks}%` as any, backgroundColor: Math.random() > 0.5 ? '#000' : 'transparent', opacity: 0.5 }} />
+        ))}
+      </View>
     );
   }
   // Flip: horizontal flip transition
@@ -691,6 +759,7 @@ function getSingleAnimStyle(anim: string, t: number, isOut: boolean): { opacity:
     }
     case 'roll': return { opacity: Math.min(1, progress * 4), transform: [{ translateX: isOut ? -60 * t : 60 * (1 - progress) }, { rotate: `${isOut ? -15 * t : 15 * (1 - progress)}deg` as any }] };
     case 'dissolve': return { opacity: isOut ? 1 - t : t };
+    case 'wipe': return { opacity: 1, transform: [{ translateX: isOut ? 100 * t : -100 * (1 - progress) }] };
     default: return { opacity: 1 };
   }
 }
@@ -795,6 +864,9 @@ function DraggableTextOverlay({
   onMove: (id: string, x: number, y: number) => void;
 }) {
   const posRef = useRef({ x: overlay.positionX, y: overlay.positionY });
+  React.useEffect(() => {
+    posRef.current = { x: overlay.positionX, y: overlay.positionY };
+  }, [overlay.positionX, overlay.positionY]);
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -1126,8 +1198,8 @@ function NativePreview({
   // contrast, saturation, and hue rotation. Not pixel-perfect but gives real visual
   // feedback. Image clips get the full LUT via the GL shader in PhotoGLPreview.
   useEffect(() => {
-    // LUT approximation only applies to image clips (video uses overlay grading instead)
-    if (!activeClip?.lutUri || activeClip.type === 'video') {
+    // LUT approximation applies to all clip types (CSS filter-based grading)
+    if (!activeClip?.lutUri) {
       setLutFilterApprox([]);
       return;
     }
@@ -1329,10 +1401,11 @@ function NativePreview({
         saturation: (activeClip.saturation ?? 0) + (animTransform.saturation ?? 0),
       }
     : activeClip;
-  // Video clips: overlay approach (works on Android SurfaceView)
+  // Video clips: overlay approach for color tints (works on Android SurfaceView)
   const colorState = getVideoColorState(kfClip);
-  // Image clips: CSS filter approach (works on React Native Image component)
-  const videoFilter = activeClip.type !== 'video' ? buildVideoFilter(kfClip, lutFilterApprox) : null;
+  // CSS filter approach for brightness/contrast/saturation — works on all clip types.
+  // Applied to the wrapping View which affects the VideoView/Image inside.
+  const videoFilter = buildVideoFilter(kfClip, lutFilterApprox);
   // Compute clip In/Out transition opacity and transform
   const clipEffDur = (activeClip.duration - activeClip.trimStart - activeClip.trimEnd) / Math.max(0.01, activeClip.speed);
   const clipLocalMs = currentTime - activeClip.startTime;
@@ -1369,18 +1442,25 @@ function NativePreview({
         opacity: clipOpacity,
       }}>
       {activeClip.type === 'video' && VideoView && player ? (
-        <View style={[styles.mediaWrapper, transformStyle]}>
-          {/* VideoView — SurfaceView on Android renders outside the View compositor.
-              Darkening is done via VideoView opacity; all other grading uses overlay Views. */}
+        <View style={[
+          styles.mediaWrapper,
+          transformStyle,
+          videoFilter ? ({ filter: videoFilter } as any) : {},
+        ]}>
+          {/* VideoView — SurfaceView on Android. Color grading is handled by
+              CSS filter on the parent View (works on Android 12+ / iOS).
+              Color tint overlays (temperature, tint, named filters) add
+              additional visual color grading on top. */}
           <VideoView
-            style={[styles.video, { opacity: colorState.videoOpacity }]}
+            style={styles.video}
             player={player}
             allowsFullscreen={false}
             allowsPictureInPicture={false}
             contentFit="contain"
           />
 
-          {/* Color grading overlays — rendered on top of SurfaceView, visible on all Android */}
+          {/* Color tint overlays — temperature, tint, and named filter tints.
+              These add subtle color casts visible on all Android versions. */}
           {colorState.overlays.map((ov, idx) => (
             <View
               key={idx}

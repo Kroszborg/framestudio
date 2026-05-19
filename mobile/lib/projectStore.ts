@@ -24,16 +24,30 @@ const SETTINGS_KEY = 'framestudio_settings_v2';
 // Module-level playback interval — stable across Zustand state updates
 let _playIntervalId: ReturnType<typeof setInterval> | null = null;
 
-async function getHapticsEnabled(): Promise<boolean> {
-  try {
-    const raw = await AsyncStorage.getItem(SETTINGS_KEY);
-    if (raw) {
-      const s = JSON.parse(raw);
-      return s.haptics !== false;
-    }
-  } catch {}
-  return true;
+let _hapticsCached: boolean | null = null;
+let _hapticsLoadPromise: Promise<boolean> | null = null;
+
+function getHapticsEnabled(): Promise<boolean> {
+  if (_hapticsCached !== null) return Promise.resolve(_hapticsCached);
+  if (_hapticsLoadPromise) return _hapticsLoadPromise;
+  _hapticsLoadPromise = (async () => {
+    try {
+      const raw = await AsyncStorage.getItem(SETTINGS_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        _hapticsCached = s.haptics !== false;
+        return _hapticsCached;
+      }
+    } catch {}
+    _hapticsCached = true;
+    return true;
+  })();
+  _hapticsLoadPromise.finally(() => { _hapticsLoadPromise = null; });
+  return _hapticsLoadPromise;
 }
+
+/** Call when settings change to bust the cache */
+export function invalidateHapticsCache() { _hapticsCached = null; }
 
 async function hapticLight() {
   if (!Haptics) return;
@@ -84,6 +98,8 @@ async function flushPendingSave() {
 
 interface UndoFrame {
   clips: Clip[];
+  textOverlays: TextOverlay[];
+  stickerOverlays: StickerOverlay[];
   label: string;
 }
 
@@ -156,7 +172,7 @@ interface ProjectStore {
   removeStickerOverlay: (id: string) => Promise<void>;
 
   getSelectedClip: () => Clip | null;
-  reset: () => void;
+  reset: () => Promise<void>;
 }
 
 export const useProjectStore = create<ProjectStore>((set, get) => ({
@@ -187,7 +203,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     ]);
     const undoStack: UndoFrame[] = history
       .map(h => {
-        try { return { clips: JSON.parse(h.snapshot), label: h.action }; }
+        try { 
+          const snap = JSON.parse(h.snapshot);
+          return { clips: snap.clips || snap, textOverlays: snap.textOverlays || [], stickerOverlays: snap.stickerOverlays || [], label: h.action }; 
+        }
         catch { return null; }
       })
       .filter(Boolean) as UndoFrame[];
@@ -195,16 +214,16 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   saveClips: async (clips, label = 'edit') => {
-    const { projectId, undoStack, clips: prevClips } = get();
+    const { projectId, undoStack, clips: prevClips, textOverlays: prevText, stickerOverlays: prevStickers } = get();
     if (!projectId) return;
-    const newUndoStack = [...undoStack, { clips: prevClips, label }].slice(-50);
+    const newUndoStack = [...undoStack, { clips: prevClips, textOverlays: prevText, stickerOverlays: prevStickers, label }].slice(-50);
     set({ clips, undoStack: newUndoStack, redoStack: [] });
     await updateClips(clips);
     await saveHistory({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       projectId,
       action: label,
-      snapshot: JSON.stringify(prevClips),
+      snapshot: JSON.stringify({ clips: prevClips, textOverlays: prevText, stickerOverlays: prevStickers }),
       createdAt: Date.now(),
     });
   },
@@ -218,9 +237,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const { undoStack, clips, redoStack } = get();
     if (undoStack.length === 0) return;
     const frame = undoStack[undoStack.length - 1];
-    const newRedoStack = [{ clips, label: 'redo' }, ...redoStack].slice(0, 50);
+    const { textOverlays, stickerOverlays } = get();
+    const newRedoStack = [{ clips, textOverlays, stickerOverlays, label: 'redo' }, ...redoStack].slice(0, 50);
     const newUndoStack = undoStack.slice(0, -1);
-    set({ clips: frame.clips, undoStack: newUndoStack, redoStack: newRedoStack });
+    set({ clips: frame.clips, textOverlays: frame.textOverlays || [], stickerOverlays: frame.stickerOverlays || [], undoStack: newUndoStack, redoStack: newRedoStack });
     await updateClips(frame.clips);
     hapticLight();
     useToastStore.getState().show(`Undo: ${frame.label}`, 'info', 1500);
@@ -230,8 +250,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const { redoStack, clips, undoStack } = get();
     if (redoStack.length === 0) return;
     const frame = redoStack[0];
-    const newUndoStack = [...undoStack, { clips, label: 'undo' }].slice(-50);
-    set({ clips: frame.clips, undoStack: newUndoStack, redoStack: redoStack.slice(1).slice(0, 50) });
+    const { textOverlays, stickerOverlays } = get();
+    const newUndoStack = [...undoStack, { clips, textOverlays, stickerOverlays, label: 'undo' }].slice(-50);
+    set({ clips: frame.clips, textOverlays: frame.textOverlays || [], stickerOverlays: frame.stickerOverlays || [], undoStack: newUndoStack, redoStack: redoStack.slice(1).slice(0, 50) });
     await updateClips(frame.clips);
     hapticLight();
     useToastStore.getState().show('Redo', 'info', 1500);
@@ -337,14 +358,15 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const { clips, undoStack, pendingUndoClips, projectId } = get();
     // Push pre-drag snapshot as undo frame so undo actually restores the previous value
     const beforeClips = pendingUndoClips ?? clips;
-    const newUndoStack = [...undoStack, { clips: beforeClips, label }].slice(-50);
+    const { textOverlays, stickerOverlays } = get();
+    const newUndoStack = [...undoStack, { clips: beforeClips, textOverlays, stickerOverlays, label }].slice(-50);
     set({ undoStack: newUndoStack, redoStack: [], pendingUndoClips: null });
     if (projectId) {
       await saveHistory({
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         projectId,
         action: label,
-        snapshot: JSON.stringify(beforeClips),
+        snapshot: JSON.stringify({ clips: beforeClips, textOverlays: get().textOverlays, stickerOverlays: get().stickerOverlays }),
         createdAt: Date.now(),
       });
     }
@@ -383,6 +405,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       id: `${clip.id}_a_${Date.now()}`,
       duration: clip.duration,
       trimEnd: clip.duration - clip.trimStart - clipRelative,
+      kenBurns: undefined,
     };
     const partB: Clip = {
       ...clip,
@@ -392,6 +415,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       trimEnd: clip.trimEnd,
       duration: clip.duration,
       orderIndex: clip.orderIndex + 0.5,
+      kenBurns: undefined,
     };
 
     const newClips = clips.filter(c => c.id !== id);
@@ -500,9 +524,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     return clips.find(c => c.id === selectedClipId) || null;
   },
 
-  reset: () => {
+  reset: async () => {
     if (_playIntervalId !== null) { clearInterval(_playIntervalId); _playIntervalId = null; }
-    flushPendingSave(); // intentionally not awaited — best-effort flush on reset
+    await flushPendingSave();
     set({
       projectId: null,
       clips: [],

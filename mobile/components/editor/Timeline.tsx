@@ -48,9 +48,15 @@ interface TimelineProps {
 
 function TransitionMarker({ type }: { type: string }) {
   if (type === 'none') return null;
-  const label = type === 'fade' ? 'F' : type === 'dissolve' ? 'D' :
-    type === 'slide_left' || type === 'slide_right' ? 'S' :
-    type === 'zoom' ? 'Z' : type === 'wipe' ? 'W' : '?';
+  const labelMap: Record<string, string> = {
+    fade: 'F', dissolve: 'D', slide_left: 'SL', slide_right: 'SR',
+    slide_up: 'SU', slide_down: 'SD', zoom_in: 'ZI', zoom_out: 'ZO',
+    zoom: 'Z', wipe: 'W', shake: 'SH', roll: 'R', bounce: 'B', 
+    glitch: 'G', pixelate: 'PX', barn_door: 'BD', flip: 'FL', 
+    whip_pan: 'WP', cube: 'C', cross_zoom: 'CZ', flash: 'F!',
+    color_wipe: 'CW', push_left: 'PL', push_right: 'PR', circle_wipe: 'CW!'
+  };
+  const label = labelMap[type] || '?';
   return (
     <View style={styles.transitionMarker}>
       <Text style={styles.transitionMarkerText}>{label}</Text>
@@ -432,12 +438,20 @@ function OverlayBlock({
   const left = (startTime / 1000) * pxPerSec;
   const width = Math.max(40, (effDur / 1000) * pxPerSec);
 
+  const dragOffsetX = useRef(new Animated.Value(0)).current;
+  const dragWidth = useRef(new Animated.Value(0)).current;
+
   const bodyPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dx) > 4,
-      onPanResponderGrant: () => { /* startRef already up-to-date via useEffect */ },
+      onPanResponderGrant: () => { dragOffsetX.setValue(0); },
+      onPanResponderMove: Animated.event(
+        [null, { dx: dragOffsetX }],
+        { useNativeDriver: false }
+      ),
       onPanResponderRelease: (_, gs) => {
+        dragOffsetX.setValue(0);
         const zoom = useProjectStore.getState().zoom;
         const deltaMs = (gs.dx / zoom) * 1000;
         const newStart = Math.max(0, startRef.current + deltaMs);
@@ -450,8 +464,13 @@ function OverlayBlock({
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => { durRef.current = effDur; },
+      onPanResponderGrant: () => { durRef.current = effDur; dragWidth.setValue(0); },
+      onPanResponderMove: Animated.event(
+        [null, { dx: dragWidth }],
+        { useNativeDriver: false }
+      ),
       onPanResponderRelease: (_, gs) => {
+        dragWidth.setValue(0);
         const zoom = useProjectStore.getState().zoom;
         const deltaMs = (gs.dx / zoom) * 1000;
         const newDur = Math.max(500, durRef.current + deltaMs);
@@ -461,27 +480,35 @@ function OverlayBlock({
   ).current;
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.8}
-      onPress={onPress}
+    <Animated.View
       style={{
-        position: 'absolute', left, width, top: 4, height: TRACK_HEIGHT - 8,
-        backgroundColor: color, borderRadius: 4, flexDirection: 'row',
-        overflow: 'hidden', alignItems: 'center',
+        position: 'absolute', left, top: 4, height: TRACK_HEIGHT - 8,
+        width: Animated.add(new Animated.Value(width), dragWidth),
+        transform: [{ translateX: dragOffsetX }],
+        zIndex: 10
       }}
     >
-      {/* Drag body */}
-      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 4 }} {...bodyPan.panHandlers}>
-        <Text style={{ fontSize: 9, color: '#fff', fontWeight: '700' }} numberOfLines={1}>{label}</Text>
-      </View>
-      {/* Right edge resize handle */}
-      <View
-        style={{ width: 8, height: '100%', backgroundColor: 'rgba(255,255,255,0.4)', alignItems: 'center', justifyContent: 'center' }}
-        {...resizePan.panHandlers}
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={onPress}
+        style={{
+          flex: 1, backgroundColor: color, borderRadius: 4, flexDirection: 'row',
+          overflow: 'hidden', alignItems: 'center',
+        }}
       >
-        <View style={{ width: 2, height: 14, backgroundColor: '#fff', borderRadius: 1 }} />
-      </View>
-    </TouchableOpacity>
+        {/* Drag body */}
+        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 4 }} {...bodyPan.panHandlers}>
+          <Text style={{ fontSize: 9, color: '#fff', fontWeight: '700' }} numberOfLines={1}>{label}</Text>
+        </View>
+        {/* Right edge resize handle */}
+        <View
+          style={{ width: 8, height: '100%', backgroundColor: 'rgba(255,255,255,0.4)', alignItems: 'center', justifyContent: 'center' }}
+          {...resizePan.panHandlers}
+        >
+          <View style={{ width: 2, height: 14, backgroundColor: '#fff', borderRadius: 1 }} />
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 

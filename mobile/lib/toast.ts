@@ -19,6 +19,9 @@ interface ToastStore {
   clear: () => void;
 }
 
+// Track auto-dismiss timer refs so they can be cleaned up on manual dismiss
+const _timerRefs = new Map<string, ReturnType<typeof setTimeout>>();
+
 export const useToastStore = create<ToastStore>((set, get) => ({
   toasts: [],
 
@@ -27,13 +30,28 @@ export const useToastStore = create<ToastStore>((set, get) => ({
     const toast: Toast = { id, message, type, duration };
     set(s => ({ toasts: [...s.toasts.slice(-2), toast] })); // max 3 visible
     // Auto-dismiss
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      _timerRefs.delete(id);
       set(s => ({ toasts: s.toasts.filter(t => t.id !== id) }));
     }, duration);
+    _timerRefs.set(id, timer);
     return id;
   },
 
-  dismiss: (id) => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })),
+  dismiss: (id) => {
+    // Clear the auto-dismiss timer on manual dismiss
+    const timer = _timerRefs.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      _timerRefs.delete(id);
+    }
+    set(s => ({ toasts: s.toasts.filter(t => t.id !== id) }));
+  },
 
-  clear: () => set({ toasts: [] }),
+  clear: () => {
+    // Clear all pending timers
+    _timerRefs.forEach(timer => clearTimeout(timer));
+    _timerRefs.clear();
+    set({ toasts: [] });
+  },
 }));

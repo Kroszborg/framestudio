@@ -116,9 +116,18 @@ export default function NewProjectScreen() {
       await createProject(project);
 
       // Pick media FIRST (picker needs active context), then navigate
-      if (projectType === 'video') await pickVideoMedia(projectId);
-      else if (projectType === 'photo') await pickPhotoMedia(projectId);
-      else if (projectType === 'audio') await pickAudioMedia(projectId);
+      let clipsAdded = false;
+      if (projectType === 'video') clipsAdded = await pickVideoMedia(projectId);
+      else if (projectType === 'photo') clipsAdded = await pickPhotoMedia(projectId);
+      else if (projectType === 'audio') clipsAdded = await pickAudioMedia(projectId);
+
+      if (!clipsAdded) {
+        // User cancelled picker — delete empty project and stay on screen
+        const { deleteProject } = require('../lib/database');
+        await deleteProject(projectId);
+        setCreating(false);
+        return;
+      }
 
       router.replace(`/editor/${projectId}` as Href);
     } catch (e: any) {
@@ -127,7 +136,7 @@ export default function NewProjectScreen() {
     }
   }
 
-  async function pickVideoMedia(projectId: string) {
+  async function pickVideoMedia(projectId: string): Promise<boolean> {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Videos,
@@ -165,11 +174,13 @@ export default function NewProjectScreen() {
           });
           await createClip(clip);
         }
+        return true;
       }
-    } catch { /* user cancelled or permission denied — project still created */ }
+    } catch { /* user cancelled or permission denied */ }
+    return false;
   }
 
-  async function pickPhotoMedia(projectId: string) {
+  async function pickPhotoMedia(projectId: string): Promise<boolean> {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -204,11 +215,13 @@ export default function NewProjectScreen() {
           });
           await createClip(clip);
         }
+        return true;
       }
     } catch { /* user cancelled */ }
+    return false;
   }
 
-  async function pickAudioMedia(projectId: string) {
+  async function pickAudioMedia(projectId: string): Promise<boolean> {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['audio/*'],
@@ -216,6 +229,7 @@ export default function NewProjectScreen() {
         multiple: true,
       });
       if (!result.canceled && result.assets.length > 0) {
+        let cumulativeStart = 0;
         for (let i = 0; i < result.assets.length; i++) {
           const asset = result.assets[i];
 
@@ -253,12 +267,15 @@ export default function NewProjectScreen() {
             duration,
             trackIndex: 2,
             orderIndex: i,
-            startTime: 0,
+            startTime: cumulativeStart,
           });
+          cumulativeStart += duration;
           await createClip(clip);
         }
+        return true;
       }
     } catch { /* user cancelled */ }
+    return false;
   }
 
   const showResolution = projectType === 'video' || projectType === 'photo';

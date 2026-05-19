@@ -69,7 +69,23 @@ uniform float uLutEnabled;  // 0 = off, 1 = on
 uniform float uLutSize;     // LUT grid resolution (e.g. 17 or 33)
 // Motion blur (zoom-out radial blur)
 uniform float uMotionBlur;  // 0-1
+uniform float uTime;
 varying vec2 vUV;
+
+// HSV converters
+vec3 rgb2hsv(vec3 c) {
+    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+    float d = q.x - min(q.w, q.y);
+    float e = 1.0e-10;
+    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+vec3 hsv2rgb(vec3 c) {
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
 
 // Standard luminance weights
 const vec3 LUM = vec3(0.299, 0.587, 0.114);
@@ -334,17 +350,19 @@ void main() {
         c = mix(vec3(lum4), c, 1.0 + sShift);
         // Apply luminance shift
         c += lShift * 0.5;
-        // Hue shift: rotate in color space via temperature/tint approximation
-        c.r += hShift * 0.15;
-        c.b -= hShift * 0.10;
-        c.g += abs(hShift) * 0.05;
+        // Hue shift: rotate in color space using HSV
+        if (abs(hShift) > 0.001) {
+          vec3 hsv = rgb2hsv(c);
+          hsv.x = fract(hsv.x + hShift);
+          c = hsv2rgb(hsv);
+        }
       }
     }
   }
 
-  // Grain: film grain noise
+  // Grain: film grain noise (animated via uTime)
   if (uGrain > 0.01) {
-    float noise = fract(sin(dot(vUV + vec2(0.127, 0.311), vec2(12.989, 78.233))) * 43758.545);
+    float noise = fract(sin(dot(vUV + vec2(uTime * 0.127, uTime * 0.311), vec2(12.989, 78.233))) * 43758.545);
     float grain = (noise - 0.5) * uGrain * 0.08;
     c += grain;
   }
@@ -540,6 +558,7 @@ const PhotoGLPreview = forwardRef<PhotoGLPreviewRef, Props>(function PhotoGLPrev
     const hslSat = clip.hslSat ?? [0,0,0,0,0,0];
     const hslLum = clip.hslLum ?? [0,0,0,0,0,0];
     return {
+      uTime: (Date.now() % 100000) / 1000.0,
       uBrightness: (clip.brightness ?? 0) / 150,
       uContrast:   (clip.contrast ?? 0) / 150,
       uSaturation: (clip.saturation ?? 0) / 100,
@@ -639,6 +658,18 @@ const PhotoGLPreview = forwardRef<PhotoGLPreviewRef, Props>(function PhotoGLPrev
     // Commit frame
     (gl as any).endFrameEXP?.();
   }
+
+  // Animation loop for grain
+  useEffect(() => {
+    if (!glReady || !clip || (clip.grain ?? 0) <= 0.01) return;
+    let rafId: number;
+    const loop = () => {
+      renderFrame();
+      rafId = requestAnimationFrame(loop);
+    };
+    rafId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafId);
+  }, [glReady, clip?.grain]);
 
   // Re-render when clip params change
   useEffect(() => {

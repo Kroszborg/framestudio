@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 import { Project, Clip, TextOverlay, getTextOverlays } from './database';
 import { processImage, getTargetDimensions, applyColorGrading } from './imageProcessor';
 import { isFFmpegAvailable, runFFmpegCommand } from './ffmpegRunner';
-import { buildSingleClipCommand } from './ffmpeg';
+import { buildSingleClipCommand, buildClipAudioFilter } from './ffmpeg';
 
 // Native video processor — try expo-modules-core, then React Native NativeModules as fallback
 let nativeVideoProcessor: any = null;
@@ -674,7 +674,7 @@ async function exportAudioNative(
         const info = await FileSystem.getInfoAsync(clip.uri);
         if (!info.exists && clip.uri.startsWith('http')) {
           onProgress?.(progress, 'Downloading audio...');
-          const dest = `${(FileSystem as any).cacheDirectory}export_audio_${clip.id}.${format}`;
+          const dest = `${(FileSystem as any).cacheDirectory}export_audio_tmp_${clip.id}.${format}`;
           const dl = await FileSystem.downloadAsync(clip.uri, dest);
           localUri = dl.uri;
         } else if (!info.exists) {
@@ -687,7 +687,24 @@ async function exportAudioNative(
       const timestamp = Date.now();
       const destPath = `${(FileSystem as any).documentDirectory}FrameStudio_${safeName}_${i + 1}_${timestamp}.${format}`;
 
-      await FileSystem.copyAsync({ from: localUri, to: destPath });
+      if (isFFmpegAvailable()) {
+        try {
+          const durationSec = (clip.duration - clip.trimStart - clip.trimEnd) / (clip.speed * 1000);
+          const ssSec = clip.trimStart / 1000;
+          const af = buildClipAudioFilter(clip);
+          const audioArgs = af ? `-af "${af}"` : '';
+          const ffmpegCmd = `-ss ${ssSec.toFixed(3)} -i "${localUri}" -t ${durationSec.toFixed(3)} ${audioArgs} -y "${destPath}"`;
+          
+          onProgress?.(progress + 0.1, 'Applying audio effects...');
+          const result = await runFFmpegCommand(ffmpegCmd, durationSec, () => {});
+          if (!result.success) throw new Error('FFmpeg failed');
+        } catch {
+          await FileSystem.copyAsync({ from: localUri, to: destPath });
+        }
+      } else {
+        await FileSystem.copyAsync({ from: localUri, to: destPath });
+      }
+
       results.push(destPath);
 
       // Also try saving to MediaStore (music library) — best-effort, won't crash if fails
@@ -804,30 +821,44 @@ async function saveSingleClip(clip: Clip, opts: ExportOptions): Promise<ExportRe
   const ext = isPhotoFormat(opts.format) ? opts.format : (clip.type === 'image' ? 'jpg' : 'mp4');
 
   // Handle remote URIs
+  let localUri = clip.uri;
   if (clip.uri.startsWith('http')) {
     try {
       onProgress?.(0.3, 'Downloading source...');
       const dest = `${(FileSystem as any).cacheDirectory}export_clip_${clip.id}.${ext}`;
       const dl = await FileSystem.downloadAsync(clip.uri, dest);
-      const r = await saveUriToGallery(dl.uri, ext, project.name, onProgress);
-      return { success: r.success, uri: r.uri, metadata: r.error ? { note: r.error } : undefined };
+      localUri = dl.uri;
     } catch (err: any) {
       return { success: false, error: err?.message || 'Download failed' };
     }
+  } else {
+    // Verify local file exists
+    try {
+      const info = await FileSystem.getInfoAsync(clip.uri);
+      if (!info.exists) {
+        return { success: false, error: `Source file not found: ${clip.name || clip.uri}` };
+      }
+    } catch {
+      // content:// URIs may fail getInfoAsync — proceed anyway
+    }
   }
 
-  // Verify local file exists
-  try {
-    const info = await FileSystem.getInfoAsync(clip.uri);
-    if (!info.exists) {
-      return { success: false, error: `Source file not found: ${clip.name || clip.uri}` };
-    }
-  } catch {
-    // content:// URIs may fail getInfoAsync — proceed anyway
+  let finalUri = localUri;
+  if (clip.type !== 'image' && isFFmpegAvailable()) {
+    try {
+      const { width: tw, height: th } = getTargetDimensions(project.resolution, project.aspectRatio);
+      const outputPath = `${(FileSystem as any).cacheDirectory}ffmpeg_fallback_${clip.id}.${ext}`;
+      const ffmpegCmd = buildSingleClipCommand(clip, outputPath, tw, th, ext as 'mp4'|'mov', opts.quality);
+      const durationSec = (clip.duration - clip.trimStart - clip.trimEnd) / 1000;
+      const ffmpegResult = await runFFmpegCommand(ffmpegCmd, durationSec, () => {});
+      if (ffmpegResult.success) {
+        finalUri = outputPath;
+      }
+    } catch {}
   }
 
   onProgress?.(0.5, 'Saving to gallery...');
-  const r = await saveUriToGallery(clip.uri, ext, project.name, onProgress);
+  const r = await saveUriToGallery(finalUri, ext, project.name, onProgress);
   return {
     success: r.success,
     uri: r.uri,

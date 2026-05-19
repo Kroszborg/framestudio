@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TextInput,
-  Image,
   StyleSheet,
   TouchableOpacity,
   Platform,
@@ -17,7 +16,7 @@ import { HugeiconsIcon } from '@hugeicons/react-native';
 import {
   ArrowLeft01Icon, Share01Icon, UndoIcon, RedoIcon,
   Settings01Icon, Video01Icon, Image01Icon, MusicNote01Icon,
-  Film01Icon, Delete01Icon, Cancel01Icon, Layers01Icon,
+  Film01Icon, Delete01Icon, Cancel01Icon,
 } from '@hugeicons/core-free-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -47,8 +46,12 @@ function isLandscape() {
   return width > height;
 }
 
-// Inspector max height: 40% of screen, min 280, max 380
-const INSPECTOR_MAX_H = Math.min(380, Math.max(280, Dimensions.get('window').height * 0.4));
+function calcInspectorMaxH() {
+  return Math.min(380, Math.max(280, Dimensions.get('window').height * 0.4));
+}
+function calcPreviewMaxH() {
+  return Math.floor(Dimensions.get('window').height * 0.45);
+}
 
 /** Convert project aspectRatio string to numeric ratio for View's aspectRatio prop */
 function getProjectAspectRatio(ar: string | undefined): number {
@@ -72,6 +75,8 @@ export default function EditorScreen() {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [landscape, setLandscape] = useState(isLandscape());
+  const [inspectorMaxH, setInspectorMaxH] = useState(calcInspectorMaxH);
+  const [previewMaxH, setPreviewMaxH] = useState(calcPreviewMaxH);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [showSaved, setShowSaved] = useState(false);
@@ -138,10 +143,12 @@ export default function EditorScreen() {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
-  // Orientation listener
+  // Orientation + dimensions listener
   useEffect(() => {
     const sub = Dimensions.addEventListener('change', ({ window }) => {
       setLandscape(window.width > window.height);
+      setInspectorMaxH(Math.min(380, Math.max(280, window.height * 0.4)));
+      setPreviewMaxH(Math.floor(window.height * 0.45));
     });
     return () => sub?.remove?.();
   }, []);
@@ -330,8 +337,8 @@ export default function EditorScreen() {
       if (!thumbnailGeneratedRef.current && id) {
         thumbnailGeneratedRef.current = true;
         try {
-          await updateProject(id, { thumbnailUri: asset.uri });
-          setProject(p => p ? { ...p, thumbnailUri: asset.uri } : p);
+          await updateProject(id, { thumbnailUri: photoUri });
+          setProject(p => p ? { ...p, thumbnailUri: photoUri } : p);
         } catch {}
       }
     }
@@ -450,18 +457,29 @@ export default function EditorScreen() {
 
   const inspectorH = inspectorAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, INSPECTOR_MAX_H],
+    outputRange: [0, inspectorMaxH],
   });
 
   if (landscape) {
+    const isPhotoLandscape = project.type === 'photo';
     return (
       <View style={[styles.landscapeContainer, { paddingLeft: insets.left, paddingRight: insets.right }]}>
         <StatusBar hidden />
         <View style={styles.landscapeLeft}>
-          <VideoPreview clips={clips} currentTime={currentTime} project={project} />
-          <Animated.View style={{ height: inspectorH, overflow: 'hidden' }}>
-            <InspectorPanel onClose={() => setInspectorOpen(false)} />
-          </Animated.View>
+          {isPhotoLandscape ? (
+            <PhotoGLPreview
+              ref={photoGLRef}
+              clip={clips.find(c => c.id === selectedClipId) ?? clips[0] ?? null}
+              style={{ flex: 1 }}
+            />
+          ) : (
+            <VideoPreview clips={clips} currentTime={currentTime} project={project} />
+          )}
+          {!isPhotoLandscape && (
+            <Animated.View style={{ height: inspectorH, overflow: 'hidden' }}>
+              <InspectorPanel onClose={() => setInspectorOpen(false)} />
+            </Animated.View>
+          )}
         </View>
         <View style={styles.landscapeRight}>
           <EditorTopBar
@@ -477,16 +495,28 @@ export default function EditorScreen() {
             showSaved={showSaved}
             onRename={handleRename}
           />
-          <Toolbar onAddMedia={handleAddMedia} projectType={project.type} />
-          {selectedClipIds.length > 0 && (
-            <MultiSelectBar
-              count={selectedClipIds.length}
-              onDelete={batchDeleteClips}
-              onMoveTrack={batchMoveClips}
-              onClear={clearSelection}
-            />
+          {isPhotoLandscape ? (
+            <View style={{ flex: 1 }}>
+              <PhotoEditorPanel
+                onAddMedia={handleAddMedia}
+                projectId={project.id}
+                currentTime={currentTime}
+              />
+            </View>
+          ) : (
+            <>
+              <Toolbar onAddMedia={handleAddMedia} projectType={project.type} />
+              {selectedClipIds.length > 0 && (
+                <MultiSelectBar
+                  count={selectedClipIds.length}
+                  onDelete={batchDeleteClips}
+                  onMoveTrack={batchMoveClips}
+                  onClear={clearSelection}
+                />
+              )}
+              <Timeline projectId={id!} />
+            </>
           )}
-          <Timeline projectId={id!} />
         </View>
         <ToastOverlay toasts={toasts} onDismiss={dismissToast} />
       </View>
@@ -512,12 +542,12 @@ export default function EditorScreen() {
         onRename={handleRename}
       />
 
-      {/* Preview — aspect ratio from project settings, never hardcoded 16:9 */}
+      {/* Preview — aspect ratio from project settings, capped height for tall ratios */}
       <View style={[
         styles.previewWrapper,
         project.type === 'audio' ? styles.previewWrapperAudio :
         project.type === 'photo' ? styles.previewWrapperPhoto :
-        { aspectRatio: getProjectAspectRatio(project.aspectRatio) },
+        { aspectRatio: getProjectAspectRatio(project.aspectRatio), maxHeight: previewMaxH },
       ]}>
         {project.type === 'photo' ? (
           // PhotoGLPreview — aspect-ratio-correct GL preview with pixel-accurate color grade
@@ -810,6 +840,7 @@ const styles = StyleSheet.create({
   previewWrapper: {
     width: '100%',
     backgroundColor: '#000',
+    alignSelf: 'center',
   },
   previewWrapperVideo: {
     aspectRatio: 16 / 9,  // fallback only — runtime uses getProjectAspectRatio()

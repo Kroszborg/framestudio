@@ -49,6 +49,7 @@ export default function CropScreen() {
   const clip = useProjectStore(s => s.clips.find(c => c.id === s.selectedClipId) ?? null);
 
   const [selectedPreset, setSelectedPreset] = useState<number>(0);
+  const selectedPresetRef = useRef(selectedPreset);
   const [crop, setCrop] = useState<CropRect>({
     x: clip?.cropX ?? 0,
     y: clip?.cropY ?? 0,
@@ -57,10 +58,35 @@ export default function CropScreen() {
   });
   const cropRef = useRef(crop);
 
-  // Preview container — use a square-ish container so all ratios display correctly
-  // The source image fills this container with contain resizing
-  const PREVIEW_W = SCREEN_W - spacing[4] * 2;
-  const PREVIEW_H = PREVIEW_W; // Square container: crop values are % of source, display correctly
+  const [imageSize, setImageSize] = useState({ w: 1, h: 1 });
+  const [sizeLoaded, setSizeLoaded] = useState(false);
+
+  React.useEffect(() => {
+    if (clip?.uri) {
+      Image.getSize(
+        clip.uri,
+        (w, h) => {
+          setImageSize({ w: w || 1, h: h || 1 });
+          setSizeLoaded(true);
+        },
+        () => {
+          setImageSize({ w: 1, h: 1 });
+          setSizeLoaded(true);
+        }
+      );
+    }
+  }, [clip?.uri]);
+
+  // Preview container — scale to fit image aspect ratio exactly
+  const MAX_W = SCREEN_W - spacing[4] * 2;
+  const imageAspect = imageSize.w / imageSize.h;
+  let PREVIEW_W = MAX_W;
+  let PREVIEW_H = MAX_W;
+  if (imageAspect > 1) {
+    PREVIEW_H = MAX_W / imageAspect;
+  } else {
+    PREVIEW_W = MAX_W * imageAspect;
+  }
 
   // Convert normalized crop to px
   function toPx(c: CropRect) {
@@ -113,6 +139,7 @@ export default function CropScreen() {
 
   function handlePresetPress(idx: number) {
     setSelectedPreset(idx);
+    selectedPresetRef.current = idx;
     const preset = ASPECT_PRESETS[idx];
     if (preset.ratio) applyAspect(preset.ratio);
   }
@@ -136,7 +163,7 @@ export default function CropScreen() {
         const dy = gs.dy / PREVIEW_H;
         let { x, y, w, h } = snap;
         const minSize = 0.1;
-        const lockedAspect = ASPECT_PRESETS[selectedPreset].ratio;
+        const lockedAspect = ASPECT_PRESETS[selectedPresetRef.current].ratio;
 
         if (handle === 'move') {
           x = clamp(snap.x + dx, 0, 1 - snap.w);
@@ -213,6 +240,7 @@ export default function CropScreen() {
     setCrop(next);
     cropRef.current = next;
     setSelectedPreset(0);
+    selectedPresetRef.current = 0;
   }
 
   const px = toPx(crop);

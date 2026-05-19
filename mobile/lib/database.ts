@@ -224,6 +224,20 @@ const DEFAULT_DB: DB = {
   history: [], folders: [], filterPresets: [],
 };
 
+
+let dbLock = Promise.resolve();
+async function runWithLock<T>(fn: () => Promise<T>): Promise<T> {
+  const currentLock = dbLock;
+  let release: () => void = () => {};
+  dbLock = new Promise<void>(resolve => { release = resolve; });
+  try {
+    await currentLock;
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
 async function readDB(): Promise<DB> {
   try {
     const info = await FileSystem.getInfoAsync(DB_FILE);
@@ -257,7 +271,14 @@ async function readDB(): Promise<DB> {
 async function writeDB(db: DB): Promise<void> {
   try {
     await (FileSystem as any).writeAsStringAsync(DB_FILE, JSON.stringify(db));
-  } catch {}
+  } catch (err) {
+    console.error('[database] writeDB failed, retrying once:', err);
+    try {
+      await (FileSystem as any).writeAsStringAsync(DB_FILE, JSON.stringify(db));
+      console.error('[database] writeDB retry also failed:', retryErr);
+      throw retryErr;
+    }
+  }
 }
 
 export const DEFAULT_KEN_BURNS: KenBurnsConfig = {
@@ -329,6 +350,13 @@ export function makeClipDefaults(partial: Partial<Clip> & Pick<Clip, 'id' | 'pro
     fadeOut: 0,
     enhance: false,
     parallaxEnabled: false,
+    parallaxPreset: 'dolly_in',
+    parallaxSpeed: 1.0,
+    backgroundRemovalEnabled: false,
+    clipTransitionIn: 'none',
+    clipTransitionOut: 'none',
+    clipTransitionInDuration: 400,
+    clipTransitionOutDuration: 400,
     ...partial,
   };
 }
@@ -372,58 +400,66 @@ export async function getProject(id: string): Promise<Project | null> {
 }
 
 export async function createProject(project: Project): Promise<void> {
-  const db = await readDB();
-  db.projects.push(project);
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    db.projects.push(project);
+    await writeDB(db);
+});
 }
 
 export async function updateProject(id: string, updates: Partial<Project>): Promise<void> {
-  const db = await readDB();
-  const idx = db.projects.findIndex(p => p.id === id);
-  if (idx !== -1) {
-    db.projects[idx] = { ...db.projects[idx], ...updates, updatedAt: Date.now() };
-    await writeDB(db);
-  }
+  return runWithLock(async () => {
+    const db = await readDB();
+    const idx = db.projects.findIndex(p => p.id === id);
+    if (idx !== -1) {
+      db.projects[idx] = { ...db.projects[idx], ...updates, updatedAt: Date.now() };
+      await writeDB(db);
+    }
+});
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  const db = await readDB();
-  db.projects = db.projects.filter(p => p.id !== id);
-  db.clips = db.clips.filter(c => c.projectId !== id);
-  db.textOverlays = db.textOverlays.filter(t => t.projectId !== id);
-  db.stickerOverlays = (db.stickerOverlays || []).filter(s => s.projectId !== id);
-  db.history = db.history.filter(h => h.projectId !== id);
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    db.projects = db.projects.filter(p => p.id !== id);
+    db.clips = db.clips.filter(c => c.projectId !== id);
+    db.textOverlays = db.textOverlays.filter(t => t.projectId !== id);
+    db.stickerOverlays = (db.stickerOverlays || []).filter(s => s.projectId !== id);
+    db.history = db.history.filter(h => h.projectId !== id);
+    await writeDB(db);
+});
 }
 
 export async function duplicateProject(id: string): Promise<Project | null> {
-  const db = await readDB();
-  const src = db.projects.find(p => p.id === id);
-  if (!src) return null;
-  const newId = `proj_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const existingNames = new Set(db.projects.map(p => p.name));
-  let newName = `${src.name} (copy)`;
-  let i = 2;
-  while (existingNames.has(newName)) { newName = `${src.name} (copy ${i})`; i++; }
-  const newProject: Project = { ...src, id: newId, name: newName, createdAt: Date.now(), updatedAt: Date.now() };
-  db.projects.push(newProject);
-  // Duplicate clips
-  const srcClips = db.clips.filter(c => c.projectId === id);
-  for (const clip of srcClips) {
-    db.clips.push({ ...clip, id: `${clip.id}_dup_${Date.now()}`, projectId: newId });
-  }
-  // Duplicate text overlays
-  const srcStickers = (db.stickerOverlays || []).filter(s => s.projectId === id);
-  srcStickers.forEach(s => {
-    if (!db.stickerOverlays) db.stickerOverlays = [];
-    db.stickerOverlays.push({ ...s, id: `${s.id}_dup_${Date.now()}`, projectId: newId });
-  });
-  const srcTexts = db.textOverlays.filter(t => t.projectId === id);
-  for (const t of srcTexts) {
-    db.textOverlays.push({ ...t, id: `${t.id}_dup_${Date.now()}`, projectId: newId });
-  }
-  await writeDB(db);
-  return newProject;
+  return runWithLock(async () => {
+    const db = await readDB();
+    const src = db.projects.find(p => p.id === id);
+    if (!src) return null;
+    const newId = `proj_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const existingNames = new Set(db.projects.map(p => p.name));
+    let newName = `${src.name} (copy)`;
+    let i = 2;
+    while (existingNames.has(newName)) { newName = `${src.name} (copy ${i})`; i++; }
+    const newProject: Project = { ...src, id: newId, name: newName, createdAt: Date.now(), updatedAt: Date.now() };
+    db.projects.push(newProject);
+    // Duplicate clips
+    const srcClips = db.clips.filter(c => c.projectId === id);
+    for (const clip of srcClips) {
+      db.clips.push({ ...clip, id: `${clip.id}_dup_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, projectId: newId });
+    }
+    // Duplicate text overlays
+    const srcStickers = (db.stickerOverlays || []).filter(s => s.projectId === id);
+    srcStickers.forEach(s => {
+      if (!db.stickerOverlays) db.stickerOverlays = [];
+      db.stickerOverlays.push({ ...s, id: `${s.id}_dup_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, projectId: newId });
+    });
+    const srcTexts = db.textOverlays.filter(t => t.projectId === id);
+    for (const t of srcTexts) {
+      db.textOverlays.push({ ...t, id: `${t.id}_dup_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, projectId: newId });
+    }
+    await writeDB(db);
+    return newProject;
+});
 }
 
 // ── Clips CRUD ──
@@ -436,34 +472,42 @@ export async function getClips(projectId: string): Promise<Clip[]> {
 }
 
 export async function createClip(clip: Clip): Promise<void> {
-  const db = await readDB();
-  db.clips.push(clip);
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    db.clips.push(clip);
+    await writeDB(db);
+});
 }
 
 export async function updateClip(id: string, updates: Partial<Clip>): Promise<void> {
-  const db = await readDB();
-  const idx = db.clips.findIndex(c => c.id === id);
-  if (idx !== -1) {
-    db.clips[idx] = { ...db.clips[idx], ...updates };
-    await writeDB(db);
-  }
+  return runWithLock(async () => {
+    const db = await readDB();
+    const idx = db.clips.findIndex(c => c.id === id);
+    if (idx !== -1) {
+      db.clips[idx] = { ...db.clips[idx], ...updates };
+      await writeDB(db);
+    }
+});
 }
 
 export async function updateClips(clips: Clip[]): Promise<void> {
-  const db = await readDB();
-  for (const clip of clips) {
-    const idx = db.clips.findIndex(c => c.id === clip.id);
-    if (idx !== -1) db.clips[idx] = clip;
-    else db.clips.push(clip);
-  }
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    for (const clip of clips) {
+      const idx = db.clips.findIndex(c => c.id === clip.id);
+      if (idx !== -1) db.clips[idx] = clip;
+      else db.clips.push(clip);
+    }
+    await writeDB(db);
+});
 }
 
 export async function deleteClip(id: string): Promise<void> {
-  const db = await readDB();
-  db.clips = db.clips.filter(c => c.id !== id);
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    db.clips = db.clips.filter(c => c.id !== id);
+    await writeDB(db);
+});
 }
 
 // ── Text Overlays CRUD ──
@@ -474,24 +518,30 @@ export async function getTextOverlays(projectId: string): Promise<TextOverlay[]>
 }
 
 export async function createTextOverlay(overlay: TextOverlay): Promise<void> {
-  const db = await readDB();
-  db.textOverlays.push(overlay);
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    db.textOverlays.push(overlay);
+    await writeDB(db);
+});
 }
 
 export async function updateTextOverlay(id: string, updates: Partial<TextOverlay>): Promise<void> {
-  const db = await readDB();
-  const idx = db.textOverlays.findIndex(t => t.id === id);
-  if (idx !== -1) {
-    db.textOverlays[idx] = { ...db.textOverlays[idx], ...updates };
-    await writeDB(db);
-  }
+  return runWithLock(async () => {
+    const db = await readDB();
+    const idx = db.textOverlays.findIndex(t => t.id === id);
+    if (idx !== -1) {
+      db.textOverlays[idx] = { ...db.textOverlays[idx], ...updates };
+      await writeDB(db);
+    }
+});
 }
 
 export async function deleteTextOverlay(id: string): Promise<void> {
-  const db = await readDB();
-  db.textOverlays = db.textOverlays.filter(t => t.id !== id);
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    db.textOverlays = db.textOverlays.filter(t => t.id !== id);
+    await writeDB(db);
+});
 }
 
 // ── Sticker Overlays CRUD ──
@@ -502,40 +552,48 @@ export async function getStickerOverlays(projectId: string): Promise<StickerOver
 }
 
 export async function createStickerOverlay(sticker: StickerOverlay): Promise<void> {
-  const db = await readDB();
-  if (!db.stickerOverlays) db.stickerOverlays = [];
-  db.stickerOverlays.push(sticker);
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    if (!db.stickerOverlays) db.stickerOverlays = [];
+    db.stickerOverlays.push(sticker);
+    await writeDB(db);
+});
 }
 
 export async function updateStickerOverlay(id: string, updates: Partial<StickerOverlay>): Promise<void> {
-  const db = await readDB();
-  if (!db.stickerOverlays) db.stickerOverlays = [];
-  const idx = db.stickerOverlays.findIndex(s => s.id === id);
-  if (idx !== -1) {
-    db.stickerOverlays[idx] = { ...db.stickerOverlays[idx], ...updates };
-    await writeDB(db);
-  }
+  return runWithLock(async () => {
+    const db = await readDB();
+    if (!db.stickerOverlays) db.stickerOverlays = [];
+    const idx = db.stickerOverlays.findIndex(s => s.id === id);
+    if (idx !== -1) {
+      db.stickerOverlays[idx] = { ...db.stickerOverlays[idx], ...updates };
+      await writeDB(db);
+    }
+});
 }
 
 export async function deleteStickerOverlay(id: string): Promise<void> {
-  const db = await readDB();
-  if (!db.stickerOverlays) return;
-  db.stickerOverlays = db.stickerOverlays.filter(s => s.id !== id);
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    if (!db.stickerOverlays) return;
+    db.stickerOverlays = db.stickerOverlays.filter(s => s.id !== id);
+    await writeDB(db);
+});
 }
 
 // ── History ──
 
 export async function saveHistory(entry: HistoryEntry): Promise<void> {
-  const db = await readDB();
-  db.history.push(entry);
-  const projectHistory = db.history.filter(h => h.projectId === entry.projectId);
-  if (projectHistory.length > 50) {
-    const toRemove = projectHistory.slice(0, projectHistory.length - 50).map(h => h.id);
-    db.history = db.history.filter(h => !toRemove.includes(h.id));
-  }
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    db.history.push(entry);
+    const projectHistory = db.history.filter(h => h.projectId === entry.projectId);
+    if (projectHistory.length > 50) {
+      const toRemove = projectHistory.slice(0, projectHistory.length - 50).map(h => h.id);
+      db.history = db.history.filter(h => !toRemove.includes(h.id));
+    }
+    await writeDB(db);
+});
 }
 
 export async function getHistory(projectId: string): Promise<HistoryEntry[]> {
@@ -546,9 +604,11 @@ export async function getHistory(projectId: string): Promise<HistoryEntry[]> {
 }
 
 export async function clearHistory(projectId: string): Promise<void> {
-  const db = await readDB();
-  db.history = db.history.filter(h => h.projectId !== projectId);
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    db.history = db.history.filter(h => h.projectId !== projectId);
+    await writeDB(db);
+});
 }
 
 // ── Folders CRUD ──
@@ -559,26 +619,32 @@ export async function getFolders(): Promise<Folder[]> {
 }
 
 export async function createFolder(folder: Folder): Promise<void> {
-  const db = await readDB();
-  db.folders.push(folder);
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    db.folders.push(folder);
+    await writeDB(db);
+});
 }
 
 export async function deleteFolder(id: string): Promise<void> {
-  const db = await readDB();
-  db.folders = db.folders.filter(f => f.id !== id);
-  // Unassign projects from deleted folder
-  db.projects = db.projects.map(p => p.folderId === id ? { ...p, folderId: undefined } : p);
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    db.folders = db.folders.filter(f => f.id !== id);
+    // Unassign projects from deleted folder
+    db.projects = db.projects.map(p => p.folderId === id ? { ...p, folderId: undefined } : p);
+    await writeDB(db);
+});
 }
 
 export async function moveProjectToFolder(projectId: string, folderId: string | undefined): Promise<void> {
-  const db = await readDB();
-  const idx = db.projects.findIndex(p => p.id === projectId);
-  if (idx !== -1) {
-    db.projects[idx] = { ...db.projects[idx], folderId, updatedAt: Date.now() };
-    await writeDB(db);
-  }
+  return runWithLock(async () => {
+    const db = await readDB();
+    const idx = db.projects.findIndex(p => p.id === projectId);
+    if (idx !== -1) {
+      db.projects[idx] = { ...db.projects[idx], folderId, updatedAt: Date.now() };
+      await writeDB(db);
+    }
+});
 }
 
 // ── Filter Presets CRUD ──
@@ -589,15 +655,19 @@ export async function getFilterPresets(): Promise<FilterPreset[]> {
 }
 
 export async function saveFilterPreset(preset: FilterPreset): Promise<void> {
-  const db = await readDB();
-  db.filterPresets.push(preset);
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    db.filterPresets.push(preset);
+    await writeDB(db);
+});
 }
 
 export async function deleteFilterPreset(id: string): Promise<void> {
-  const db = await readDB();
-  db.filterPresets = db.filterPresets.filter(p => p.id !== id);
-  await writeDB(db);
+  return runWithLock(async () => {
+    const db = await readDB();
+    db.filterPresets = db.filterPresets.filter(p => p.id !== id);
+    await writeDB(db);
+});
 }
 
 // Additional types used by ffmpeg.ts

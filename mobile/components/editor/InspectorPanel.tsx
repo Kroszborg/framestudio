@@ -356,7 +356,7 @@ function HSLPanel({ clip, updateClip, updateClipOptimistic, commitClipUpdate }: 
 }
 
 export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
-  const { activeInspectorTab, setActiveInspectorTab, selectedClipId, getSelectedClip, updateClip, updateClipOptimistic, commitClipUpdate } = useProjectStore();
+  const { activeInspectorTab, setActiveInspectorTab, selectedClipId, getSelectedClip, updateClip, updateClipOptimistic, commitClipUpdate, currentTime } = useProjectStore();
   const clip = getSelectedClip();
 
   // Reset to 'clip' tab when a different clip is selected
@@ -383,7 +383,7 @@ export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
     // Use optimistic update first for instant visual feedback, then commit
     updateClipOptimistic(clip.id, { [key]: value });
     commitClipUpdate(clip.id, `set ${key}`);
-  }, [clip, updateClip, updateClipOptimistic, commitClipUpdate]);
+  }, [clip, updateClipOptimistic, commitClipUpdate]);
 
   return (
     <View style={styles.container}>
@@ -743,9 +743,9 @@ export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
               {/* Enhancement */}
               <View style={styles.divider} />
               <Text style={styles.sectionTitle}>Enhancement</Text>
-              <ToggleRow label="Quality Enhance" value={clip.enhance ?? false} onChange={v => update('enhance', v)} icon={MixerIcon} />
-              <ToggleRow label="Stabilize" value={clip.stabilize ?? false} onChange={v => update('stabilize', v)} icon={VideoReplayIcon} />
-              <ToggleRow label="Denoise" value={clip.denoise ?? false} onChange={v => update('denoise', v)} icon={MixerIcon} />
+              <ToggleRow label="Quality Enhance (Export)" value={clip.enhance ?? false} onChange={v => update('enhance', v)} icon={MixerIcon} />
+              <ToggleRow label="Stabilize (Export)" value={clip.stabilize ?? false} onChange={v => update('stabilize', v)} icon={VideoReplayIcon} />
+              <ToggleRow label="Denoise (Export)" value={clip.denoise ?? false} onChange={v => update('denoise', v)} icon={MixerIcon} />
               {/* Chroma key */}
               <View style={styles.divider} />
               <Text style={styles.sectionTitle}>Chroma Key</Text>
@@ -934,7 +934,6 @@ export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
 
               {/* Keyframe tracks */}
               {(clip.animTracks ?? []).map((track, i) => {
-                const { currentTime } = useProjectStore.getState();
                 const localTime = currentTime - clip.startTime;
                 return (
                   <KeyframeEditor

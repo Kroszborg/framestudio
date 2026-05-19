@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter, type Href } from 'expo-router';
+import Constants from 'expo-constants';
 import { useThemeColors, typography, spacing, radius } from '../../lib/theme';
 import { syncProjects, canSync } from '../../lib/sync';
 import { getAuthState } from '../../lib/auth';
@@ -175,7 +176,7 @@ function PickerSheet<T extends string | number>({
 
 export default function SettingsScreen() {
   const colors = useThemeColors();
-  const styles = makeStyles(colors);
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
   const [storageUsed, setStorageUsed] = useState<string>('...');
@@ -421,8 +422,13 @@ export default function SettingsScreen() {
             value={syncing ? 'Syncing...' : (canSync() ? 'Connected' : 'Sign in required')}
             onPress={canSync() ? async () => {
               setSyncing(true);
-              await syncProjects();
-              setSyncing(false);
+              try {
+                await syncProjects();
+              } catch (e: any) {
+                Alert.alert('Sync failed', e?.message || 'Could not sync projects');
+              } finally {
+                setSyncing(false);
+              }
             } : undefined}
           />
           {!canSync() && (
@@ -454,7 +460,7 @@ export default function SettingsScreen() {
 
         <SectionHeader title="About" />
         <View style={styles.card}>
-          <Row icon={InformationCircleIcon} label="Version" value="2.0.0" />
+          <Row icon={InformationCircleIcon} label="Version" value={Constants.expoConfig?.version ?? '1.0.0'} />
           <View style={styles.divider} />
           <Row icon={CodeIcon} label="Build" value="production" />
         </View>

@@ -156,7 +156,9 @@ export function buildExportCommand(
 
   sortedClips.forEach((clip, i) => {
     const clipFilter = buildClipFilter(clip);
-    const trimFilter = `trim=start=${clip.trimStart}:duration=${clip.duration},setpts=PTS-STARTPTS`;
+    const trimStartSec = clip.trimStart / 1000;
+    const durationSec = (clip.duration - clip.trimStart - clip.trimEnd) / 1000;
+    const trimFilter = `trim=start=${trimStartSec}:duration=${durationSec},setpts=PTS-STARTPTS`;
     const scaleFilter = `scale=${options.width}:${options.height}:force_original_aspect_ratio=decrease,pad=${options.width}:${options.height}:(ow-iw)/2:(oh-ih)/2`;
 
     const fullFilter = [trimFilter, scaleFilter, clipFilter].filter(Boolean).join(',');
@@ -255,8 +257,11 @@ export function getResolutionDimensions(
   const aspect = aw / ah;
 
   const heightMap: Record<string, number> = {
+    '480p': 480,
     '720p': 720,
     '1080p': 1080,
+    '2K': 1440,
+    '4K': 2160,
   };
 
   const height = heightMap[resolution] || 1080;

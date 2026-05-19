@@ -7,7 +7,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Alert,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import { HugeiconsIcon } from '@hugeicons/react-native';
 import {
   MixerIcon, PaintBrushIcon, FilterIcon, CropIcon, TextIcon,
@@ -229,7 +229,10 @@ function ColorPanel({ clip }: { clip: Clip | null | undefined }) {
 const FILTER_COLORS: Record<string, string> = {
   none: '#1A1A1A', bw: '#444', sepia: '#7A4A14', vintage: '#6A3A10',
   cool: '#0A2040', warm: '#402010', dramatic: '#0A0A0A', cinematic: '#0A0A20',
-  vhs: '#201020', glow: '#302010', neon: '#100A30',
+  vhs: '#201020', glow: '#302010', neon: '#100A30', blur: '#2A2A3A',
+  polaroid: '#3D3020', noir: '#111', chrome: '#253040', fade: '#3A3025',
+  lomo: '#1A2A10', instant: '#3D2010', daylight: '#203040', night: '#050A20',
+  tropical: '#002040', mars: '#401008', lunar: '#1A1A25', velvia: '#103020',
 };
 
 // ── Mask panel ────────────────────────────────────────────────────────────────
@@ -365,6 +368,14 @@ export default function PhotoEditorPanel({ onAddMedia, projectId, currentTime }:
   const [activeTab, setActiveTab] = useState<Tab>('adjust');
   const { getSelectedClip, updateClip } = useProjectStore();
   const clip = getSelectedClip();
+
+  useFocusEffect(
+    useCallback(() => {
+      if (['crop', 'text', 'sticker'].includes(activeTab)) {
+        setActiveTab('adjust');
+      }
+    }, [activeTab])
+  );
 
   function handleRevert() {
     if (!clip) return;

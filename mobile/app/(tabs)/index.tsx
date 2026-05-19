@@ -11,6 +11,34 @@ import {
   TextInput,
   Image,
 } from 'react-native';
+
+import { Modal } from 'react-native';
+function PromptModal({ visible, title, placeholder, onCancel, onSubmit }: any) {
+  const [val, setVal] = useState('');
+  useEffect(() => { if (visible) setVal(''); }, [visible]);
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ width: '80%', backgroundColor: colors.surface1, borderRadius: radius.lg, padding: spacing[4] }}>
+          <Text style={{ color: colors.textPrimary, fontSize: typography.base, fontWeight: '600', marginBottom: spacing[2] }}>{title}</Text>
+          <TextInput
+            style={{ backgroundColor: colors.surface2, color: colors.textPrimary, borderRadius: radius.sm, padding: spacing[2], marginBottom: spacing[4] }}
+            placeholder={placeholder}
+            placeholderTextColor={colors.textMuted}
+            value={val}
+            onChangeText={setVal}
+            autoFocus
+          />
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: spacing[3] }}>
+            <TouchableOpacity onPress={onCancel}><Text style={{ color: colors.textMuted, fontSize: typography.sm }}>Cancel</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => onSubmit(val)}><Text style={{ color: colors.accent, fontSize: typography.sm, fontWeight: '600' }}>Create</Text></TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -196,6 +224,7 @@ export default function HomeScreen() {
   const [searchVisible, setSearchVisible] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('all');
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [folderPromptVisible, setFolderPromptVisible] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useFocusEffect(
@@ -497,6 +526,13 @@ export default function HomeScreen() {
           />
         </Animated.View>
       )}
+      <PromptModal
+        visible={folderPromptVisible}
+        title="New folder"
+        placeholder="Enter folder name"
+        onCancel={() => setFolderPromptVisible(false)}
+        onSubmit={onFolderSubmit}
+      />
     </SafeAreaView>
   );
 }
