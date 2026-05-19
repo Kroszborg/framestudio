@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 
-const APK = 'https://github.com/Kroszborg/framestudio/releases/download/v1.7/framestudio.apk';
+const APK = 'https://github.com/Kroszborg/framestudio/releases/download/v1.8/framestudio.apk';
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
 function LogoMark({ size = 24 }: { size?: number }) {

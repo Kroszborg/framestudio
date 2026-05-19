@@ -392,9 +392,14 @@ export default function EditorScreen() {
   }
 
   async function handleExport() {
+    if (!id) {
+      useToastStore.getState().show('Cannot export — project not loaded', 'error', 2000);
+      return;
+    }
+    // Pause playback before navigating to export
+    setIsPlaying(false);
+
     // For photo projects, capture GL-rendered frame for each clip before exporting.
-    // We iterate through clips, temporarily set each as selected, wait for the GL
-    // texture to load, then capture. Results are stored keyed by clip ID.
     if (project?.type === 'photo' && photoGLRef.current) {
       try {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
@@ -403,20 +408,14 @@ export default function EditorScreen() {
 
         for (const photoClip of photoClips) {
           setSelectedClipId(photoClip.id);
-          // Wait until the GL texture is actually loaded (polls texRef every 80ms, up to 4s)
           await photoGLRef.current!.waitForTexture?.(4000);
           const capturedUri = await photoGLRef.current!.captureAsync().catch(() => null);
           if (capturedUri) {
             await AsyncStorage.setItem(`photo_export_${id}_${photoClip.id}`, capturedUri).catch(() => {});
           }
         }
-        // Restore original selection
         if (photoClips.length > 0) setSelectedClipId(photoClips[0].id);
       } catch {} // non-fatal — export proceeds with fallback
-    }
-    if (!id) {
-      useToastStore.getState().show('Cannot export — project not loaded', 'error', 2000);
-      return;
     }
     router.push(`/editor/export?id=${id}` as Href);
   }
