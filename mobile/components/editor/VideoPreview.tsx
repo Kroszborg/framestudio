@@ -164,66 +164,106 @@ function hasColorGrading(clip: Clip): boolean {
 }
 
 /**
- * Build a React Native filter array for a video clip.
- * Handles brightness, contrast, saturation, temperature (approximation), and named filters.
- * Applied to the wrapper View so it affects the VideoView inside.
+ * Compute video color grading as overlay Views.
+ *
+ * On Android, expo-video's VideoView renders via SurfaceView, which bypasses React
+ * Native's View compositor — so CSS `filter` on a parent View has no effect.
+ * Instead we use:
+ *   • VideoView opacity (supported by SurfaceView alpha on all Android versions) for
+ *     darkening (negative brightness / low exposure).
+ *   • Semi-transparent color overlay Views rendered on top of VideoView for brightening,
+ *     temperature, tint, saturation approximation, and named filter tints.
+ *
+ * Returns videoOpacity (0–1) and an overlays array for rendering.
  */
-function buildVideoFilter(clip: Clip): Record<string, any>[] | null {
-  const filters: Record<string, any>[] = [];
+interface VideoColorOverlay { color: string; opacity: number; }
+interface VideoColorState { videoOpacity: number; overlays: VideoColorOverlay[]; }
 
-  // Brightness: multiplicative — no more white overlay hack
-  const brightnessVal = Math.max(0.01, 1 + clip.brightness / 150);
-  if (Math.abs(brightnessVal - 1) > 0.01) {
-    filters.push({ brightness: brightnessVal });
+function getVideoColorState(clip: Clip): VideoColorState {
+  const overlays: VideoColorOverlay[] = [];
+
+  // Merge brightness + exposure into one effective value (1 EV ≈ 28 brightness units)
+  const evBoost = (clip.exposure ?? 0) * 28;
+  const eff = (clip.brightness ?? 0) + evBoost;
+
+  // ── Brightness / Exposure ───────────────────────────────────────────────────
+  // Darken: reduce VideoView opacity (multiplicative darkening — works on SurfaceView)
+  const videoOpacity = eff < 0 ? Math.max(0.05, 1 + eff / 110) : 1;
+  // Brighten: white overlay (additive brightening, capped at 32% so it doesn't blow out)
+  if (eff > 0) {
+    overlays.push({ color: '#FFFFFF', opacity: Math.min(0.32, eff / 310) });
   }
 
-  // Contrast
-  const contrastVal = Math.max(0.01, 1 + clip.contrast / 150);
-  if (Math.abs(contrastVal - 1) > 0.01) {
-    filters.push({ contrast: contrastVal });
+  // ── Contrast ─────────────────────────────────────────────────────────────────
+  const contrast = clip.contrast ?? 0;
+  if (contrast > 15) {
+    // Lift contrast: slight black overlay deepens shadows
+    overlays.push({ color: '#000000', opacity: Math.min(0.14, contrast / 700) });
+  } else if (contrast < -10) {
+    // Reduce contrast: gray overlay flattens dynamic range
+    overlays.push({ color: '#808080', opacity: Math.min(0.22, -contrast / 450) });
   }
 
-  // Saturation
-  const saturateVal = Math.max(0, 1 + clip.saturation / 100);
-  if (Math.abs(saturateVal - 1) > 0.01) {
-    filters.push({ saturate: saturateVal });
+  // ── Saturation approximation ─────────────────────────────────────────────────
+  const sat = clip.saturation ?? 0;
+  if (sat < -10) {
+    // Desaturate: gray overlay (partial B&W effect)
+    overlays.push({ color: '#808080', opacity: Math.min(0.55, -sat / 180) });
   }
+  // Positive saturation can't be approximated with overlays; shown at export.
 
-  // Temperature approximation via hue rotation (warm→red, cool→blue)
-  if (Math.abs(clip.temperature) > 3) {
-    const deg = -(clip.temperature / 100) * 12;
-    filters.push({ hueRotate: `${deg.toFixed(1)}deg` });
-  }
+  // ── Highlights ───────────────────────────────────────────────────────────────
+  const hl = clip.highlights ?? 0;
+  if (hl < -10) overlays.push({ color: '#000000', opacity: Math.min(0.14, -hl / 700) });
+  if (hl > 10)  overlays.push({ color: '#FFFFFF', opacity: Math.min(0.14, hl / 700) });
 
-  // Named filter presets — proper CSS filter mapping (replaces color-overlay approach)
+  // ── Shadows ──────────────────────────────────────────────────────────────────
+  const sh = clip.shadows ?? 0;
+  if (sh > 10)  overlays.push({ color: '#FFFFFF', opacity: Math.min(0.12, sh / 830) });
+  if (sh < -10) overlays.push({ color: '#000000', opacity: Math.min(0.12, -sh / 830) });
+
+  // ── Temperature ──────────────────────────────────────────────────────────────
+  const temp = clip.temperature ?? 0;
+  if (temp > 5)  overlays.push({ color: '#FF8C00', opacity: Math.min(0.26, temp / 385) });
+  if (temp < -5) overlays.push({ color: '#1E90FF', opacity: Math.min(0.22, -temp / 455) });
+
+  // ── Tint ─────────────────────────────────────────────────────────────────────
+  const tint = clip.tint ?? 0;
+  if (tint > 5)  overlays.push({ color: '#00C853', opacity: Math.min(0.14, tint / 715) });
+  if (tint < -5) overlays.push({ color: '#FF00AA', opacity: Math.min(0.14, -tint / 715) });
+
+  // ── Named filter tints ────────────────────────────────────────────────────────
   if (clip.filter) {
-    const i = (clip.filterIntensity ?? 100) / 100;
+    const fi = (clip.filterIntensity ?? 100) / 100;
     switch (clip.filter) {
-      case 'bw':         filters.push({ grayscale: i }); break;
-      case 'sepia':      filters.push({ sepia: 0.8 * i }); break;
-      case 'vintage':    filters.push({ sepia: 0.4 * i }, { contrast: 1 + 0.1 * i }, { brightness: 1 - 0.05 * i }); break;
-      case 'cool':       filters.push({ saturate: 1 - 0.2 * i }, { hueRotate: `${20 * i}deg` }); break;
-      case 'warm':       filters.push({ saturate: 1 + 0.2 * i }, { brightness: 1 + 0.05 * i }); break;
-      case 'dramatic':   filters.push({ contrast: 1 + 0.4 * i }, { brightness: 1 - 0.15 * i }, { saturate: 1 - 0.3 * i }); break;
-      case 'cinematic':  filters.push({ contrast: 1 + 0.2 * i }, { saturate: 1 - 0.15 * i }, { brightness: 1 - 0.1 * i }); break;
-      case 'vhs':        filters.push({ contrast: 1 + 0.1 * i }, { saturate: 1 + 0.3 * i }, { brightness: 1 + 0.1 * i }); break;
-      case 'glow':       filters.push({ brightness: 1 + 0.2 * i }, { contrast: 1 - 0.1 * i }); break;
-      case 'neon':       filters.push({ saturate: 1 + 1.5 * i }, { brightness: 1 + 0.1 * i }, { contrast: 1 + 0.2 * i }); break;
-      case 'orange_teal':filters.push({ saturate: 1 + 0.3 * i }, { contrast: 1 + 0.1 * i }); break;
-      case 'moody':      filters.push({ contrast: 1 + 0.35 * i }, { brightness: 1 - 0.2 * i }, { saturate: 1 - 0.3 * i }); break;
-      case 'golden_hour':filters.push({ sepia: 0.2 * i }, { saturate: 1 + 0.4 * i }, { brightness: 1 + 0.05 * i }); break;
-      case 'matte':      filters.push({ contrast: 1 - 0.1 * i }, { brightness: 1 - 0.15 * i }); break;
-      case 'faded':      filters.push({ contrast: 1 - 0.25 * i }, { brightness: 1 - 0.1 * i }, { saturate: 1 - 0.4 * i }); break;
-      case 'tokyo':      filters.push({ saturate: 1 + 0.2 * i }, { contrast: 1 + 0.1 * i }, { hueRotate: `${15 * i}deg` }); break;
-      case 'pacific':    filters.push({ saturate: 1 + 0.3 * i }, { brightness: 1 + 0.05 * i }, { hueRotate: `${-15 * i}deg` }); break;
-      case 'noir':       filters.push({ grayscale: i }, { contrast: 1 + 0.5 * i }, { brightness: 1 - 0.1 * i }); break;
-      case 'pastel':     filters.push({ saturate: 1 - 0.5 * i }, { brightness: 1 + 0.1 * i }, { contrast: 1 - 0.15 * i }); break;
-      case 'kodak':      filters.push({ sepia: 0.15 * i }, { saturate: 1 + 0.15 * i }, { contrast: 1 + 0.05 * i }, { brightness: 1 + 0.02 * i }); break;
-      case 'fuji':       filters.push({ saturate: 1 + 0.1 * i }, { contrast: 1 + 0.05 * i }); break;
+      case 'bw':          overlays.push({ color: '#888888', opacity: 0.52 * fi }); break;
+      case 'sepia':       overlays.push({ color: '#704214', opacity: 0.35 * fi }); break;
+      case 'vintage':     overlays.push({ color: '#8B4513', opacity: 0.22 * fi }); break;
+      case 'cool':        overlays.push({ color: '#1E90FF', opacity: 0.14 * fi }); break;
+      case 'warm':        overlays.push({ color: '#FF8C00', opacity: 0.14 * fi }); break;
+      case 'dramatic':    overlays.push({ color: '#000000', opacity: 0.22 * fi }); break;
+      case 'cinematic':   overlays.push({ color: '#1a1a2e', opacity: 0.18 * fi }); break;
+      case 'vhs':         overlays.push({ color: '#FF1493', opacity: 0.10 * fi }); break;
+      case 'glow':        overlays.push({ color: '#FFD700', opacity: 0.12 * fi }); break;
+      case 'neon':        overlays.push({ color: '#8B00FF', opacity: 0.15 * fi }); break;
+      case 'orange_teal': overlays.push({ color: '#FF6B00', opacity: 0.14 * fi }); break;
+      case 'moody':       overlays.push({ color: '#0D0D1A', opacity: 0.28 * fi }); break;
+      case 'golden_hour': overlays.push({ color: '#FFB347', opacity: 0.20 * fi }); break;
+      case 'matte':       overlays.push({ color: '#2D2D2D', opacity: 0.14 * fi }); break;
+      case 'faded':       overlays.push({ color: '#B8B8A0', opacity: 0.22 * fi }); break;
+      case 'tokyo':       overlays.push({ color: '#0066FF', opacity: 0.12 * fi }); break;
+      case 'pacific':     overlays.push({ color: '#00B4D8', opacity: 0.14 * fi }); break;
+      case 'noir':
+        overlays.push({ color: '#888888', opacity: 0.40 * fi });
+        overlays.push({ color: '#000000', opacity: 0.15 * fi });
+        break;
+      case 'pastel':      overlays.push({ color: '#FFB3C1', opacity: 0.14 * fi }); break;
+      case 'kodak':       overlays.push({ color: '#C19A6B', opacity: 0.10 * fi }); break;
+      case 'fuji':        overlays.push({ color: '#90E0EF', opacity: 0.10 * fi }); break;
     }
   }
 
-  return filters.length > 0 ? filters : null;
+  return { videoOpacity, overlays };
 }
 
 export default function VideoPreview({ clips, currentTime, project }: VideoPreviewProps) {
@@ -1196,7 +1236,7 @@ function NativePreview({
     ],
   } : baseTransformStyle;
 
-  const videoGradingFilter = buildVideoFilter(activeClip);
+  const colorState = getVideoColorState(activeClip);
   // Compute clip In/Out transition opacity and transform
   const clipEffDur = (activeClip.duration - activeClip.trimStart - activeClip.trimEnd) / Math.max(0.01, activeClip.speed);
   const clipLocalMs = currentTime - activeClip.startTime;
@@ -1227,21 +1267,32 @@ function NativePreview({
     >
       <View style={{ transform: [{ scale: previewScale }], flex: 1, opacity: clipOpacity }}>
       {activeClip.type === 'video' && VideoView && player ? (
-        <View style={[styles.mediaWrapper, transformStyle, videoGradingFilter ? ({ filter: videoGradingFilter } as any) : {}]}>
+        <View style={[styles.mediaWrapper, transformStyle]}>
+          {/* Video player — opacity handles darkening (works on Android SurfaceView) */}
           <VideoView
-            style={styles.video}
+            style={[styles.video, { opacity: colorState.videoOpacity }]}
             player={player}
             allowsFullscreen={false}
             allowsPictureInPicture={false}
             contentFit="contain"
           />
+
+          {/* Color grading overlays — rendered above VideoView, below tap handler */}
+          {colorState.overlays.map((ov, idx) => (
+            <View
+              key={idx}
+              style={[StyleSheet.absoluteFillObject, { backgroundColor: ov.color, opacity: ov.opacity }]}
+              pointerEvents="none"
+            />
+          ))}
+
           {/* Reverse-render loading indicator */}
           {activeClip.reverse && reverseLoading && (
             <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' }]} pointerEvents="none">
               <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>Generating reverse preview…</Text>
             </View>
           )}
-          {/* Chroma key: loading indicator while pre-rendering */}
+          {/* Chroma key: loading indicator */}
           {activeClip.chromaKeyEnabled && chromaLoading && (
             <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' }]} pointerEvents="none">
               <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>Generating chroma key preview…</Text>
@@ -1255,6 +1306,16 @@ function NativePreview({
               </View>
             </View>
           )}
+
+          {/* Tap-to-play/pause — sits above VideoView so it intercepts taps before
+              the native SurfaceView consumes them. Rendered last = highest z-order
+              within mediaWrapper. Stickers/text overlays are outside mediaWrapper
+              (higher in the tree) so their PanResponders still claim their own taps. */}
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => setIsPlaying(!isPlaying)}
+            activeOpacity={1}
+          />
         </View>
       ) : activeClip.type === 'image' ? (
         <View style={[styles.mediaWrapper, transformStyle, { overflow: 'hidden' }]}>
@@ -1267,17 +1328,21 @@ function NativePreview({
               containerHeight={containerSize.height}
             />
           ) : activeClip.kenBurns?.enabled ? (
-            // Ken Burns: GPU animation via transform — apply CSS filter to the Image wrapper
-            <View style={[StyleSheet.absoluteFillObject, videoGradingFilter ? ({ filter: videoGradingFilter } as any) : {}]}>
+            // Ken Burns: GPU animation via transform with overlay color grading
+            <>
               <Image
                 source={{ uri: activeClip.uri }}
                 style={[
                   styles.imageMedia,
+                  { opacity: colorState.videoOpacity },
                   getKenBurnsStyle(activeClip, currentTime, containerSize.width, containerSize.height),
                 ]}
                 resizeMode="contain"
               />
-            </View>
+              {colorState.overlays.map((ov, idx) => (
+                <View key={idx} style={[StyleSheet.absoluteFillObject, { backgroundColor: ov.color, opacity: ov.opacity }]} pointerEvents="none" />
+              ))}
+            </>
           ) : (
             // Full GPU color grading via the same GL shader as the photo editor
             <PhotoGLPreview clip={activeClip} style={StyleSheet.absoluteFillObject} />
@@ -1319,9 +1384,9 @@ function NativePreview({
         />
       ))}
 
-      {/* Color grading badge */}
+      {/* Color grading badge — pointerEvents none so it never swallows taps */}
       {grading && (
-        <View style={styles.gradingBadge}>
+        <View style={styles.gradingBadge} pointerEvents="none">
           <HugeiconsIcon icon={PaintBrush01Icon} size={10} color={colors.accentText} />
           <Text style={styles.gradingBadgeText}>
             {activeClip.filter || 'Graded'}

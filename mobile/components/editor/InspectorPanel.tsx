@@ -504,7 +504,7 @@ export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
               {/* Preview note for video clips */}
               {clip.type === 'video' && (
                 <Text style={[styles.envelopeHint, { marginBottom: 4 }]}>
-                  Color grading previews via CSS filter. Fully applied at export via native processing.
+                  Brightness, exposure, temperature, tint, contrast & filters preview live. Saturation, highlights, shadows & sharpness apply at export.
                 </Text>
               )}
               {/* Quick color grade presets */}
