@@ -501,12 +501,6 @@ export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
                   <Text style={styles.resetBtnText}>Reset</Text>
                 </TouchableOpacity>
               </View>
-              {/* Preview note for video clips */}
-              {clip.type === 'video' && (
-                <Text style={[styles.envelopeHint, { marginBottom: 4 }]}>
-                  Brightness, exposure, temperature, tint, contrast & filters preview live. Saturation, highlights, shadows & sharpness apply at export.
-                </Text>
-              )}
               {/* Quick color grade presets */}
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                 {([
@@ -617,7 +611,11 @@ export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
                     <Text style={styles.lutBtnText}>Import .cube LUT</Text>
                   </TouchableOpacity>
                 )}
-                <Text style={styles.envelopeHint}>LUT will be applied during export with FFmpeg</Text>
+                <Text style={styles.envelopeHint}>
+                  {clip.type === 'image'
+                    ? 'LUT applied live in preview and at export'
+                    : 'LUT approximated in preview — full quality applied at export'}
+                </Text>
               </View>
             </View>
           )}
@@ -744,22 +742,13 @@ export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
               )}
               {/* Enhancement */}
               <View style={styles.divider} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                <Text style={styles.sectionTitle}>Enhancement</Text>
-                <Text style={styles.exportOnlyBadge}>Export only</Text>
-              </View>
+              <Text style={styles.sectionTitle}>Enhancement</Text>
               <ToggleRow label="Quality Enhance" value={clip.enhance ?? false} onChange={v => update('enhance', v)} icon={MixerIcon} />
               <ToggleRow label="Stabilize" value={clip.stabilize ?? false} onChange={v => update('stabilize', v)} icon={VideoReplayIcon} />
               <ToggleRow label="Denoise" value={clip.denoise ?? false} onChange={v => update('denoise', v)} icon={MixerIcon} />
-              {(clip.stabilize || clip.denoise || clip.enhance) && (
-                <Text style={styles.envelopeHint}>Stabilize/Denoise/Enhance are applied at export — no visual change in preview.</Text>
-              )}
               {/* Chroma key */}
               <View style={styles.divider} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                <Text style={styles.sectionTitle}>Chroma Key</Text>
-                {clip.type === 'video' && <Text style={styles.exportOnlyBadge}>Needs rebuild for preview</Text>}
-              </View>
+              <Text style={styles.sectionTitle}>Chroma Key</Text>
               <ToggleRow label="Green screen" value={clip.chromaKeyEnabled ?? false} onChange={v => update('chromaKeyEnabled', v)} icon={BrushIcon} />
               {(clip.chromaKeyEnabled ?? false) && (
                 <>
@@ -852,10 +841,7 @@ export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
               {clip.type === 'video' && (
                 <>
                   <View style={styles.divider} />
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                    <Text style={styles.sectionTitle}>Auto Cutout</Text>
-                    <Text style={styles.exportOnlyBadge}>Export only · needs rebuild</Text>
-                  </View>
+                  <Text style={styles.sectionTitle}>Auto Cutout</Text>
                   <ToggleRow
                     label="Remove background"
                     value={(clip as any).backgroundRemovalEnabled ?? false}
@@ -863,16 +849,13 @@ export default function InspectorPanel({ onClose }: { onClose?: () => void }) {
                     icon={BrushIcon}
                   />
                   {(clip as any).backgroundRemovalEnabled && (
-                    <>
-                      <SliderRow
-                        label="Edge feather"
-                        value={(clip as any).backgroundFeather ?? 5}
-                        min={0} max={20} step={1} unit="px"
-                        onChange={v => optimistic('backgroundFeather' as any, v)}
-                        onCommit={() => commit('backgroundFeather')}
-                      />
-                      <Text style={styles.envelopeHint}>Applied at export · no preview available until APK rebuild</Text>
-                    </>
+                    <SliderRow
+                      label="Edge feather"
+                      value={(clip as any).backgroundFeather ?? 5}
+                      min={0} max={20} step={1} unit="px"
+                      onChange={v => optimistic('backgroundFeather' as any, v)}
+                      onCommit={() => commit('backgroundFeather')}
+                    />
                   )}
                 </>
               )}
@@ -1002,11 +985,6 @@ const styles = StyleSheet.create({
   },
   revertRowText: {
     fontSize: typography.xs, color: colors.error, fontWeight: typography.medium,
-  },
-  exportOnlyBadge: {
-    fontSize: 9, color: colors.textMuted, fontStyle: 'italic',
-    backgroundColor: colors.surface2, paddingHorizontal: 5, paddingVertical: 2,
-    borderRadius: 4, borderWidth: 1, borderColor: colors.border,
   },
   empty: { height: 60, alignItems: 'center', justifyContent: 'center' },
   emptyText: { fontSize: typography.sm, color: colors.textMuted },

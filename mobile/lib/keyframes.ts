@@ -99,24 +99,33 @@ export function interpolateTrack(track: ClipAnimTrack, timeMs: number): number {
 }
 
 /**
- * Get the animated transform style for a clip at the given time.
- * Returns scale, translateX, translateY, rotation for use in React Native transform.
+ * Get the animated transform and color values for a clip at the given time.
  */
 export function getAnimatedTransform(
   animTracks: ClipAnimTrack[] | undefined,
   timeMs: number
-): { scale?: number; translateX?: number; translateY?: number; rotation?: number; opacity?: number } {
+): {
+  scale?: number;
+  translateX?: number;
+  translateY?: number;
+  rotation?: number;
+  opacity?: number;
+  brightness?: number;
+  saturation?: number;
+} {
   if (!animTracks || animTracks.length === 0) return {};
   const result: Record<string, number> = {};
   for (const track of animTracks) {
     result[track.param] = interpolateTrack(track, timeMs);
   }
   return {
-    scale: result.scale,
+    scale:      result.scale,
     translateX: result.posX,
     translateY: result.posY,
-    rotation: result.rotation,
-    opacity: result.opacity,
+    rotation:   result.rotation,
+    opacity:    result.opacity,
+    brightness: result.brightness,
+    saturation: result.saturation,
   };
 }
 
